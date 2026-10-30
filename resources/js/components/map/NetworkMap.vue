@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import L, { baseLayers, cableStyle, cableTypes, formatLength, odcIcon, odpColor, odpIcon, pickIcon, vertexIcon } from '@/lib/leaflet';
+import L, { baseLayers, cableStyle, cableTypes, formatLength, odcIcon, odpIcon, pickIcon, vertexIcon } from '@/lib/leaflet';
 import type { CableLine, CustomerMarker, LatLng, MapItemKind, OdcMarker, OdpMarker } from '@/types';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -66,7 +66,7 @@ function renderAssets() {
     }
 
     for (const odp of props.odps) {
-        L.marker([odp.lat, odp.lng], { icon: odpIcon(odpColor(odp), isSelected('odp', odp.id)) })
+        L.marker([odp.lat, odp.lng], { icon: odpIcon(odp, isSelected('odp', odp.id)) })
             .bindTooltip(`<b>${odp.code}</b><br>Port ${odp.used_ports}/${odp.capacity} terpakai`, { direction: 'top', offset: [0, -8] })
             .on('click', () => emit('select', 'odp', odp.id))
             .addTo(odpLayer);

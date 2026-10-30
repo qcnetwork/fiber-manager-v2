@@ -6,6 +6,7 @@ import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet/dist/leaflet.css';
+import '../../css/map-icons.css';
 
 export default L;
 export { cableTypes, formatLength, pathLength } from '@/lib/cables';
@@ -34,14 +35,30 @@ export function odpColor(odp: { status: string; capacity: number; used_ports: nu
     return '#16a34a';
 }
 
-export function odpIcon(color: string, selected = false): L.DivIcon {
-    const size = selected ? 22 : 16;
-    return L.divIcon({
-        className: '',
-        html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${color};border:${selected ? 3 : 2}px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)"></div>`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2],
-    });
+const odpIcons = new Map<string, L.DivIcon>();
+
+/**
+ * ODP marker (see map-icons.css): the ring fills with the share of used ports.
+ * Icons are cached per color, fill step and selection, so markers share a handful of icon objects.
+ */
+export function odpIcon(odp: { status: string; capacity: number; used_ports: number }, selected = false): L.DivIcon {
+    const color = odpColor(odp);
+    // Rounded to 5% steps: invisible at this size, and keeps the cache small.
+    const percent = odp.capacity > 0 ? Math.min(100, Math.round((odp.used_ports / odp.capacity) * 20) * 5) : 0;
+    const key = `${color}|${percent}|${selected}`;
+
+    let icon = odpIcons.get(key);
+    if (!icon) {
+        const size = selected ? 24 : 18;
+        icon = L.divIcon({
+            className: '',
+            html: `<div class="odp-pin${selected ? ' is-selected' : ''}" style="--c:${color};--p:${percent}%"></div>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+        });
+        odpIcons.set(key, icon);
+    }
+    return icon;
 }
 
 export function odcIcon(status: string, selected = false): L.DivIcon {

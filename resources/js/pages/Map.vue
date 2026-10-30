@@ -625,6 +625,10 @@ const panelOpen = computed(() => mode.value !== 'idle');
                         <div><span class="mr-1 inline-block size-2.5 rounded-full bg-red-600" />Penuh</div>
                         <div><span class="mr-1 inline-block size-2.5 rounded-full bg-gray-400" />Rencana</div>
                         <div><span class="mr-1 inline-block size-2.5 rounded-full bg-violet-600" />Rusak</div>
+                        <div class="mt-1 flex items-center gap-1.5 text-muted-foreground">
+                            <span class="inline-block size-3.5"><span class="odp-pin" style="--c: #f59e0b; --p: 60%" /></span>
+                            Lingkar = port terpakai
+                        </div>
                         <div class="mb-1 mt-2 font-semibold">Kabel</div>
                         <div v-for="(t, key) in cableTypes" :key="key">
                             <span class="mr-1 inline-block h-1 w-4 rounded-full align-middle" :style="{ background: t.color }" />{{ t.label }}

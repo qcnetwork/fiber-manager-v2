@@ -1,0 +1,33 @@
+/*
+ * ODP marker: a ring filled clockwise by the share of used ports, in the occupancy color.
+ * Plain CSS on one element per marker (no images or SVG), so thousands of markers stay cheap.
+ */
+.odp-pin {
+    width: 100%;
+    height: 100%;
+    border-radius: 9999px;
+    background: conic-gradient(var(--c) var(--p), #d1d5db 0);
+    /* Unused part in a pale tint of the same color, so an empty ODP still reads as green. */
+    background: conic-gradient(var(--c) var(--p), color-mix(in srgb, var(--c) 32%, #fff) 0);
+    box-shadow:
+        0 0 0 1.5px #fff,
+        0 1px 3px rgba(0, 0, 0, 0.45);
+    display: grid;
+    place-items: center;
+}
+
+/* White hub with a dot in the status color, so the color reads even when the ring is nearly empty. */
+.odp-pin::after {
+    content: '';
+    width: 50%;
+    height: 50%;
+    border-radius: 9999px;
+    background: radial-gradient(circle, var(--c) 0 42%, #fff 48%);
+}
+
+.odp-pin.is-selected {
+    box-shadow:
+        0 0 0 2.5px #fff,
+        0 0 0 5px var(--c),
+        0 2px 6px rgba(0, 0, 0, 0.5);
+}
