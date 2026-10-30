@@ -125,11 +125,58 @@ function renderCables() {
                 `<b>${cable.code ?? 'Kabel ' + cableTypes[cable.type]?.label}</b><br>${cable.cores} core · ${formatLength(cable.length_m)}`,
                 { sticky: true },
             )
-            .on('click', () => emit('select', 'cable', cable.id))
+            .on('click', (e) => onCableClick(e, cable))
             .addTo(cableLayer);
 
         if (selected) line.bringToFront();
     }
+}
+
+/** Pixels from the click within which another cable counts as passing through the same spot. */
+const CABLE_HIT_PX = 12;
+
+function cablesAt(point: L.Point): CableLine[] {
+    return props.cables.filter((cable) => {
+        const pts = cable.path.map((p) => map.latLngToContainerPoint(p));
+        return pts.some((p, i) => i > 0 && L.LineUtil.pointToSegmentDistance(point, pts[i - 1], p) <= CABLE_HIT_PX);
+    });
+}
+
+const cableLabel = (cable: CableLine) => cable.code ?? 'Kabel ' + (cableTypes[cable.type]?.label ?? cable.type);
+
+/**
+ * Cables often share a route; a click there opens a list of every cable under the pointer instead of picking the topmost one.
+ */
+function onCableClick(e: L.LeafletMouseEvent, cable: CableLine) {
+    const hits = cablesAt(e.containerPoint);
+    if (hits.length <= 1) {
+        emit('select', 'cable', cable.id);
+        return;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'flex flex-col gap-0.5';
+    list.innerHTML = `<div class="mb-1 text-xs font-semibold text-gray-600">${hits.length} kabel di titik ini</div>`;
+    const popup = L.popup({ closeButton: true, autoPan: true, maxWidth: 260 });
+
+    for (const hit of hits) {
+        const type = cableTypes[hit.type] ?? cableTypes.distribusi;
+        const status = hit.status === 'aktif' ? '' : ` · ${hit.status}`;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-gray-100';
+        button.innerHTML =
+            `<span class="h-1.5 w-5 shrink-0 rounded-full" style="background:${hit.status === 'rusak' ? '#7c3aed' : type.color}"></span>` +
+            `<span class="min-w-0"><span class="block truncate font-semibold">${escapeHtml(cableLabel(hit))}</span>` +
+            `<span class="block text-xs text-gray-500">${type.label} · ${hit.cores} core · ${formatLength(hit.length_m)}${status}</span></span>`;
+        button.addEventListener('click', () => {
+            map.closePopup(popup);
+            emit('select', 'cable', hit.id);
+        });
+        list.appendChild(button);
+    }
+
+    popup.setLatLng(e.latlng).setContent(list).openOn(map);
 }
 
 const CUSTOMER_COLOR = '#0d9488';
