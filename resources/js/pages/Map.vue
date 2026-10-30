@@ -38,8 +38,22 @@ import type {
     OdpPort,
 } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
-import { useDebounceFn } from '@vueuse/core';
-import { Box, CircleDot, Crosshair, LoaderCircle, Radar, Search, Spline } from 'lucide-vue-next';
+import { useDebounceFn, useFullscreen } from '@vueuse/core';
+import {
+    Box,
+    ChevronDown,
+    ChevronUp,
+    CircleDot,
+    Crosshair,
+    Eye,
+    EyeOff,
+    LoaderCircle,
+    Maximize,
+    Minimize,
+    Radar,
+    Search,
+    Spline,
+} from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{
@@ -507,6 +521,22 @@ const panelOpen = computed(() => mode.value !== 'idle');
 
 // Phone bottom sheet: starts at half height so the map stays visible; collapses again when the panel content changes.
 const sheetExpanded = ref(false);
+
+// ---- Clear map: hide the toolbar, and/or use the browser's full screen (hides its address bar on phones)
+const toolbarHidden = ref(false);
+watch(toolbarHidden, (hidden) => {
+    if (hidden) {
+        query.value = '';
+        searchResults.value = [];
+    }
+});
+
+// The whole page goes full screen, not just the map, so dialogs and panels still show.
+const {
+    isSupported: canFullscreen,
+    isFullscreen,
+    toggle: toggleFullscreen,
+} = useFullscreen(typeof document !== 'undefined' ? document.documentElement : undefined);
 watch([mode, selected], () => (sheetExpanded.value = false));
 </script>
 
@@ -542,23 +572,53 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                     />
 
                     <!-- Phones: no page header, so the menu floats over the map (the zoom buttons are hidden there; pinch instead). -->
-                    <SidebarTrigger class="absolute left-2 top-2 z-10 size-10 rounded-full border bg-background shadow md:hidden" />
+                    <SidebarTrigger
+                        v-if="!toolbarHidden"
+                        class="absolute left-2 top-2 z-10 size-10 rounded-full border bg-background shadow md:hidden"
+                    />
+
+                    <!-- Toolbar hidden for a clear map: one button brings it back (bottom right on phones, top left on desktop). -->
+                    <Button
+                        v-if="toolbarHidden"
+                        variant="secondary"
+                        class="absolute bottom-[calc(env(safe-area-inset-bottom)_+_1.75rem)] right-3 z-10 h-11 rounded-full border px-4 shadow-lg md:bottom-auto md:left-14 md:right-auto md:top-2 md:h-10 md:rounded-md md:shadow"
+                        :class="panelOpen && 'max-md:hidden'"
+                        title="Tampilkan pencarian dan menu"
+                        @click="toolbarHidden = false"
+                    >
+                        <ChevronUp class="size-4 md:hidden" />
+                        <Eye class="size-4 max-md:hidden" />
+                        Menu
+                    </Button>
 
                     <!-- Toolbar: docked at the bottom on phones (within thumb reach), along the top on desktop -->
                     <div
+                        v-show="!toolbarHidden"
                         class="pointer-events-none absolute inset-x-2 bottom-[calc(env(safe-area-inset-bottom)_+_1.5rem)] z-10 flex flex-col-reverse gap-2 md:inset-x-auto md:bottom-auto md:left-14 md:right-14 md:top-2 md:flex-row md:flex-wrap md:items-start"
                         :class="panelOpen && 'max-md:hidden'"
                     >
-                        <div class="pointer-events-auto relative w-full md:max-w-64">
-                            <Search class="absolute left-3 top-3.5 size-4 text-muted-foreground md:left-2.5 md:top-3" />
-                            <Input
-                                v-model="query"
-                                type="search"
-                                enterkeyhint="search"
-                                placeholder="ODC/ODP, pelanggan, koordinat, link Maps…"
-                                class="h-11 rounded-full bg-background pl-9 text-base shadow-lg md:h-10 md:rounded-md md:pl-8 md:text-sm md:shadow"
-                                @keydown.enter="queryIsLocation && nearestFromQuery()"
-                            />
+                        <div class="pointer-events-auto relative flex w-full gap-2 md:max-w-80">
+                            <div class="relative min-w-0 flex-1">
+                                <Search class="absolute left-3 top-3.5 size-4 text-muted-foreground md:left-2.5 md:top-3" />
+                                <Input
+                                    v-model="query"
+                                    type="search"
+                                    enterkeyhint="search"
+                                    placeholder="ODC/ODP, pelanggan, koordinat, link Maps…"
+                                    class="h-11 rounded-full bg-background pl-9 text-base shadow-lg md:h-10 md:rounded-md md:pl-8 md:text-sm md:shadow"
+                                    @keydown.enter="queryIsLocation && nearestFromQuery()"
+                                />
+                            </div>
+                            <Button
+                                variant="secondary"
+                                size="icon"
+                                class="size-11 shrink-0 rounded-full border shadow-lg md:size-10 md:rounded-md md:shadow"
+                                title="Sembunyikan menu (peta penuh)"
+                                @click="toolbarHidden = true"
+                            >
+                                <ChevronDown class="size-5 md:hidden" />
+                                <EyeOff class="size-4 max-md:hidden" />
+                            </Button>
                             <!-- Results open upwards on phones, so they stay above the keyboard and the thumb. -->
                             <div
                                 v-if="queryIsLocation"
@@ -617,6 +677,18 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                                 <Crosshair v-else class="size-4" />
                                 <span class="md:hidden">Lokasi saya</span>
                             </Button>
+                            <Button
+                                v-if="canFullscreen"
+                                size="sm"
+                                variant="secondary"
+                                class="h-10 border shadow md:w-10 md:px-0"
+                                :title="isFullscreen ? 'Keluar dari layar penuh' : 'Layar penuh'"
+                                @click="toggleFullscreen()"
+                            >
+                                <Minimize v-if="isFullscreen" class="size-4" />
+                                <Maximize v-else class="size-4" />
+                                <span class="md:hidden">{{ isFullscreen ? 'Keluar layar penuh' : 'Layar penuh' }}</span>
+                            </Button>
                             <template v-if="can.edit">
                                 <Button size="sm" class="h-10 shadow" @click="startCreate('odc')"><Box class="size-4" /> ODC</Button>
                                 <Button size="sm" class="h-10 shadow" @click="startCreate('odp')"><CircleDot class="size-4" /> ODP</Button>
@@ -636,7 +708,10 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                     </div>
 
                     <!-- Legend -->
-                    <div class="absolute bottom-6 right-2 z-10 hidden rounded-md border bg-background/90 p-2 text-xs shadow sm:block">
+                    <div
+                        v-show="!toolbarHidden"
+                        class="absolute bottom-6 right-2 z-10 hidden rounded-md border bg-background/90 p-2 text-xs shadow sm:block"
+                    >
                         <div class="mb-1 font-semibold">Okupansi ODP</div>
                         <div><span class="mr-1 inline-block size-2.5 rounded-full bg-green-600" />&lt; 50%</div>
                         <div><span class="mr-1 inline-block size-2.5 rounded-full bg-amber-500" />≥ 50%</div>
@@ -655,14 +730,14 @@ watch([mode, selected], () => (sheetExpanded.value = false));
 
                     <div
                         v-if="truncated"
-                        :class="!panelOpen && 'max-md:bottom-32'"
+                        :class="!panelOpen && !toolbarHidden && 'max-md:bottom-32'"
                         class="absolute bottom-6 left-1/2 z-10 w-max max-w-[90%] -translate-x-1/2 rounded-md bg-amber-100 px-3 py-1 text-xs text-amber-900 shadow"
                     >
                         Terlalu banyak titik di layar — perbesar peta untuk melihat semuanya.
                     </div>
                     <div
                         v-else-if="showCustomers && (zoom < CUSTOMER_MIN_ZOOM || customersTruncated)"
-                        :class="!panelOpen && 'max-md:bottom-32'"
+                        :class="!panelOpen && !toolbarHidden && 'max-md:bottom-32'"
                         class="absolute bottom-6 left-1/2 z-10 w-max max-w-[90%] -translate-x-1/2 rounded-md bg-teal-50 px-3 py-1 text-xs text-teal-900 shadow"
                     >
                         {{

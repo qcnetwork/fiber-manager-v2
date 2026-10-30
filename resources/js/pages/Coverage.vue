@@ -9,7 +9,25 @@ import { geocode, precisionWarning, resolveLocation, type GeocodeResult, type Lo
 import { currentPosition, getJson } from '@/lib/http';
 import type { Area, BreadcrumbItem, CableLine, OdcMarker, OdpMarker, SharedData } from '@/types';
 import { Head, usePage } from '@inertiajs/vue3';
-import { CircleAlert, CircleCheck, CircleX, Copy, Crosshair, ExternalLink, LoaderCircle, MapPin, Search, TriangleAlert } from 'lucide-vue-next';
+import { useFullscreen } from '@vueuse/core';
+import {
+    ChevronDown,
+    ChevronUp,
+    CircleAlert,
+    CircleCheck,
+    CircleX,
+    Copy,
+    Crosshair,
+    ExternalLink,
+    LoaderCircle,
+    MapPin,
+    Maximize,
+    Minimize,
+    PanelLeftClose,
+    PanelLeftOpen,
+    Search,
+    TriangleAlert,
+} from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 interface CoverageOdp {
@@ -88,7 +106,12 @@ const error = ref('');
 const precision = ref<LocationPrecision>('exact');
 const warning = computed(() => (point.value ? precisionWarning(precision.value) : null));
 
+// ---- Clear map: hide the panel, and/or the browser's full screen (whole page, so the panel still shows)
+const panelHidden = ref(false);
+const fullscreen = useFullscreen(typeof document !== 'undefined' ? document.documentElement : undefined);
+
 async function check(lat: number, lng: number, from: LocationPrecision = 'exact') {
+    panelHidden.value = false; // tapping the map while the panel is hidden shows the result
     precision.value = from;
     point.value = { lat, lng };
     geoResults.value = [];
@@ -235,10 +258,32 @@ async function copyResult() {
             <div class="absolute inset-0 flex flex-col-reverse overflow-hidden md:flex-row md:rounded-b-xl">
                 <!-- Panel: bottom on phones (search within thumb reach, map above), left column on desktop -->
                 <section
+                    v-show="!panelHidden"
                     class="max-h-[55%] shrink-0 overflow-y-auto overscroll-contain rounded-t-2xl border-t p-4 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-[0_-4px_12px_rgba(0,0,0,.08)] md:max-h-none md:w-[400px] md:rounded-none md:border-r md:border-t-0 md:pb-4 md:shadow-none"
                 >
-                    <h1 class="text-lg font-semibold max-md:hidden">Cek coverage calon pelanggan</h1>
-                    <p class="mb-3 text-sm text-muted-foreground max-md:mb-2 max-md:text-xs">Batas jarak ODP ke pelanggan: {{ radius }} m.</p>
+                    <div class="mb-3 flex items-start justify-between gap-2 max-md:mb-2">
+                        <div>
+                            <h1 class="text-lg font-semibold max-md:hidden">Cek coverage calon pelanggan</h1>
+                            <p class="text-sm text-muted-foreground max-md:text-xs">Batas jarak ODP ke pelanggan: {{ radius }} m.</p>
+                        </div>
+                        <div class="flex shrink-0 gap-1">
+                            <Button
+                                v-if="fullscreen.isSupported.value"
+                                variant="outline"
+                                size="icon"
+                                class="size-9"
+                                :title="fullscreen.isFullscreen.value ? 'Keluar dari layar penuh' : 'Layar penuh'"
+                                @click="fullscreen.toggle()"
+                            >
+                                <Minimize v-if="fullscreen.isFullscreen.value" class="size-4" />
+                                <Maximize v-else class="size-4" />
+                            </Button>
+                            <Button variant="outline" size="icon" class="size-9" title="Sembunyikan panel (peta penuh)" @click="panelHidden = true">
+                                <ChevronDown class="size-5 md:hidden" />
+                                <PanelLeftClose class="size-4 max-md:hidden" />
+                            </Button>
+                        </div>
+                    </div>
 
                     <form class="flex gap-2" @submit.prevent="search">
                         <div class="relative flex-1">
@@ -358,6 +403,18 @@ async function copyResult() {
                 <!-- Map -->
                 <div class="relative min-h-[260px] flex-1">
                     <SidebarTrigger class="absolute left-2 top-2 z-10 size-10 rounded-full border bg-background shadow md:hidden" />
+                    <!-- Panel hidden for a clear map: this brings it back (bottom right on phones, top left on desktop). -->
+                    <Button
+                        v-if="panelHidden"
+                        variant="secondary"
+                        class="absolute bottom-[calc(env(safe-area-inset-bottom)_+_1.75rem)] right-3 z-10 h-11 rounded-full border px-4 shadow-lg md:bottom-auto md:left-14 md:right-auto md:top-2 md:h-10 md:rounded-md md:shadow"
+                        title="Tampilkan panel cek coverage"
+                        @click="panelHidden = false"
+                    >
+                        <ChevronUp class="size-4 md:hidden" />
+                        <PanelLeftOpen class="size-4 max-md:hidden" />
+                        Cek coverage
+                    </Button>
                     <NetworkMap
                         ref="mapRef"
                         :odcs="odcs"
