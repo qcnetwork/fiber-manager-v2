@@ -23,6 +23,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('coverage/check', [CoverageController::class, 'check'])->name('coverage.check');
     Route::get('map/features', [MapController::class, 'features'])->name('map.features');
     Route::get('map/search', [MapController::class, 'search'])->name('map.search');
+    Route::get('map/resolve-link', [MapController::class, 'resolveLink'])->middleware('throttle:30,1')->name('map.resolve-link');
 });
 
 Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function () {

@@ -4,11 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatLength } from '@/lib/cables';
-import { geocode, isUrl, parseCoordinates, type GeocodeResult } from '@/lib/coordinates';
+import { geocode, precisionWarning, resolveLocation, type GeocodeResult, type LocationPrecision } from '@/lib/coordinates';
 import { currentPosition, getJson } from '@/lib/http';
 import type { Area, BreadcrumbItem, CableLine, OdcMarker, OdpMarker } from '@/types';
 import { Head } from '@inertiajs/vue3';
-import { CircleAlert, CircleCheck, CircleX, Copy, Crosshair, ExternalLink, LoaderCircle, MapPin, Search } from 'lucide-vue-next';
+import { CircleAlert, CircleCheck, CircleX, Copy, Crosshair, ExternalLink, LoaderCircle, MapPin, Search, TriangleAlert } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 interface CoverageOdp {
@@ -81,7 +81,12 @@ const result = ref<CoverageResult | null>(null);
 const checking = ref(false);
 const error = ref('');
 
-async function check(lat: number, lng: number) {
+// Where the checked point came from; links get an accuracy warning.
+const precision = ref<LocationPrecision>('exact');
+const warning = computed(() => (point.value ? precisionWarning(precision.value) : null));
+
+async function check(lat: number, lng: number, from: LocationPrecision = 'exact') {
+    precision.value = from;
     point.value = { lat, lng };
     geoResults.value = [];
     checking.value = true;
@@ -113,17 +118,14 @@ async function search() {
     error.value = '';
     geoResults.value = [];
 
-    const coords = parseCoordinates(text);
-    if (coords) return check(coords.lat, coords.lng);
-
-    if (isUrl(text)) {
-        error.value =
-            'Link ini tidak berisi koordinat (link pendek Google Maps). Buka link-nya, tahan titik lokasi, lalu salin angka koordinatnya ke sini.';
-        return;
-    }
-
     searching.value = true;
     try {
+        const coords = await resolveLocation(text);
+        if (coords) {
+            searching.value = false;
+            return await check(coords.lat, coords.lng, coords.precision);
+        }
+
         geoResults.value = await geocode(text, lastBbox);
         if (!geoResults.value.length)
             error.value = 'Alamat tidak ditemukan. Coba tulis lebih umum (desa/kecamatan), lalu tap lokasi tepatnya di peta.';
@@ -195,7 +197,7 @@ async function copyResult() {
     const best = r.available[0];
     const lines = [
         `Cek coverage ${new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`,
-        `Lokasi: ${point.value.lat.toFixed(6)}, ${point.value.lng.toFixed(6)}`,
+        `Lokasi: ${point.value.lat.toFixed(6)}, ${point.value.lng.toFixed(6)}${precision.value === 'exact' ? '' : ' (dari link Google Maps, perlu dicek)'}`,
         mapsUrl.value,
         `Hasil: ${verdict.value.title.toUpperCase()} (batas ${r.radius} m)`,
         best ? `ODP: ${best.code} — ${best.distance} m, ${best.free_ports} port kosong` : null,
@@ -269,6 +271,14 @@ async function copyResult() {
                     </ul>
 
                     <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
+
+                    <p
+                        v-if="warning && !error"
+                        class="mt-3 flex gap-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+                    >
+                        <TriangleAlert class="size-4 shrink-0" />
+                        <span>{{ warning }}</span>
+                    </p>
 
                     <!-- Result -->
                     <div v-if="result && verdict && point" class="mt-4 grid gap-3">

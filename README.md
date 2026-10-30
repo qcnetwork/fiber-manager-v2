@@ -11,6 +11,7 @@ Dibangun dengan Laravel 12, Inertia + Vue 3 (TypeScript), Tailwind, dan Leaflet/
 - **Port & pelanggan** — grid port per ODP, isi data pelanggan (ID/PPPoE, HP, paket, SN ONT).
 - **Jalur kabel** — gambar di peta, ujung menempel otomatis ke ODC/ODP, panjang dihitung otomatis, ikut berpindah bila ODC/ODP dipindah.
 - **Foto** — galeri foto per ODC/ODP; foto dikecilkan di browser sebelum diunggah.
+- **Link Google Maps → koordinat** — tempel link Google Maps (termasuk link pendek `maps.app.goo.gl`) di Cek Coverage, kotak cari peta, atau panel *Terdekat*; lokasi dari link selalu diberi peringatan agar dicek, karena koordinat langsung lebih akurat. Link pendek dibuka oleh server, jadi server perlu akses internet.
 - **Cek coverage** — untuk sales: masukkan alamat, koordinat, link Google Maps, atau GPS; hasil *tercover / ODP penuh / belum tercover* berdasarkan ODP aktif dengan port kosong dalam radius (default 250 m).
 - **Ekspor & impor** — Excel (.xlsx) dan KML/KMZ (Google Earth / My Maps). Hasil ekspor bisa diedit lalu diimpor kembali; impor bersifat semua-atau-tidak-sama-sekali.
 - **Multi area & role** — Super Admin, Admin Area, Teknisi, Viewer, Sales. User tanpa area dapat mengakses semua area.

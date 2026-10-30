@@ -12,7 +12,10 @@ export async function getJson<T>(url: string, params: Record<string, string | nu
         credentials: 'same-origin',
     });
 
-    if (!response.ok) throw new Error(`Permintaan gagal (${response.status})`);
+    if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.message ?? `Permintaan gagal (${response.status})`);
+    }
 
     return response.json();
 }

@@ -11,6 +11,7 @@ import PortDialog from '@/components/map/PortDialog.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { isUrl, parseCoordinates, precisionWarning, resolveLocation } from '@/lib/coordinates';
 import { currentPosition, getJson } from '@/lib/http';
 import { cableTypes } from '@/lib/leaflet';
 import type {
@@ -229,13 +230,36 @@ const nearestRadius = ref(props.coverageRadius);
 const nearestLoading = ref(false);
 const nearestError = ref('');
 const nearest = ref<{ lat: number; lng: number; radius: number; results: NearestOdp[] } | null>(null);
+// Set when the point came from a Google Maps link, which may be off.
+const nearestWarning = ref<string | null>(null);
 
 function startNearest() {
     closePanel();
     nearestPoint.value = null;
     nearestResults.value = null;
     nearestError.value = '';
+    nearestWarning.value = null;
     mode.value = 'nearest';
+}
+
+function nearestAt(lat: number, lng: number, warning: string | null = null) {
+    nearestWarning.value = warning;
+    nearestPoint.value = { lat, lng };
+    return searchNearest();
+}
+
+async function nearestFromText(text: string) {
+    nearestLoading.value = true;
+    nearestError.value = '';
+    try {
+        const loc = await resolveLocation(text);
+        if (!loc) throw new Error('Isi dengan koordinat (mis. -7.0429, 109.5813) atau link Google Maps.');
+        mapRef.value?.flyTo(loc.lat, loc.lng);
+        await nearestAt(loc.lat, loc.lng, precisionWarning(loc.precision));
+    } catch (e) {
+        nearestError.value = (e as Error).message;
+        nearestLoading.value = false;
+    }
 }
 
 async function searchNearest() {
@@ -258,9 +282,8 @@ async function nearestFromGps() {
     nearestLoading.value = true;
     try {
         const pos = await currentPosition();
-        nearestPoint.value = { lat: pos.lat, lng: pos.lng };
         mapRef.value?.flyTo(pos.lat, pos.lng);
-        await searchNearest();
+        await nearestAt(pos.lat, pos.lng);
     } catch (e) {
         nearestError.value = (e as Error).message;
         nearestLoading.value = false;
@@ -352,8 +375,7 @@ function onMapClick(lat: number, lng: number) {
     } else if (mode.value === 'form') {
         pick.value = { lat, lng };
     } else if (mode.value === 'nearest') {
-        nearestPoint.value = { lat, lng };
-        searchNearest();
+        nearestAt(lat, lng);
     } else if (mode.value === 'detail') {
         closePanel();
     }
@@ -362,10 +384,20 @@ function onMapClick(lat: number, lng: number) {
 // ---- Toolbar: search & my location
 const query = ref('');
 const searchResults = ref<{ kind: AssetKind; id: number; code: string; name: string | null; lat: number; lng: number }[]>([]);
+// Pasted coordinates or a Google Maps link are a location, not a code to look up.
+const queryIsLocation = computed(() => !!parseCoordinates(query.value) || isUrl(query.value));
 const runSearch = useDebounceFn(async () => {
-    searchResults.value = query.value.trim().length < 2 ? [] : await getJson(route('map.search'), { q: query.value.trim() });
+    const q = query.value.trim();
+    searchResults.value = q.length < 2 || queryIsLocation.value ? [] : await getJson(route('map.search'), { q });
 }, 300);
 watch(query, runSearch);
+
+function nearestFromQuery() {
+    const text = query.value;
+    query.value = '';
+    startNearest();
+    nearestFromText(text);
+}
 
 function pickSearchResult(r: { kind: AssetKind; id: number }) {
     query.value = '';
@@ -422,7 +454,24 @@ const panelOpen = computed(() => mode.value !== 'idle');
                     <div class="pointer-events-none absolute left-14 right-14 top-2 z-10 flex flex-wrap items-start gap-2">
                         <div class="pointer-events-auto relative w-full max-w-64">
                             <Search class="absolute left-2.5 top-3 size-4 text-muted-foreground" />
-                            <Input v-model="query" placeholder="Cari kode ODC/ODP…" class="h-10 bg-background pl-8 shadow" />
+                            <Input
+                                v-model="query"
+                                placeholder="Kode ODC/ODP, koordinat, atau link Maps…"
+                                class="h-10 bg-background pl-8 shadow"
+                                @keydown.enter="queryIsLocation && nearestFromQuery()"
+                            />
+                            <div
+                                v-if="queryIsLocation"
+                                class="absolute mt-1 w-full overflow-hidden rounded-md border bg-background text-sm shadow-lg"
+                            >
+                                <button
+                                    type="button"
+                                    class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted"
+                                    @click="nearestFromQuery"
+                                >
+                                    <Radar class="size-4 shrink-0" /> Cari ODP terdekat dari lokasi ini
+                                </button>
+                            </div>
                             <ul
                                 v-if="searchResults.length"
                                 class="absolute mt-1 w-full overflow-hidden rounded-md border bg-background text-sm shadow-lg"
@@ -582,7 +631,9 @@ const panelOpen = computed(() => mode.value !== 'idle');
                         :results="nearestResults"
                         :loading="nearestLoading"
                         :error="nearestError"
+                        :warning="nearestWarning"
                         @use-gps="nearestFromGps"
+                        @locate="nearestFromText"
                         @select="(odp) => select('odp', odp.id, true)"
                         @close="closePanel"
                     />

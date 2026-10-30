@@ -7,10 +7,12 @@ use App\Models\Cable;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Services\CoverageService;
+use App\Services\GoogleMapsLink;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 
 class MapController extends Controller
 {
@@ -104,6 +106,20 @@ class MapController extends Controller
             ...$match(Odc::query())->map(fn (Odc $odc) => ['kind' => 'odc', ...$odc->toArray()]),
             ...$match(Odp::query())->map(fn (Odp $odp) => ['kind' => 'odp', ...$odp->toArray()]),
         ]);
+    }
+
+    /**
+     * Coordinates from a Google Maps link, following short-link redirects.
+     */
+    public function resolveLink(Request $request, GoogleMapsLink $links): JsonResponse
+    {
+        $data = $request->validate(['url' => ['required', 'string', 'max:2000']]);
+
+        try {
+            return response()->json($links->resolve($data['url']));
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
     }
 
     /**
