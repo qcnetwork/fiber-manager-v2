@@ -274,7 +274,12 @@ watch(() => props.customerFocus, renderCustomerFocus);
 
 defineExpose({
     flyTo(lat: number, lng: number, zoom?: number) {
-        map.flyTo([lat, lng], Math.max(zoom ?? map.getZoom(), 17), { duration: 0.6 });
+        const z = Math.max(zoom ?? map.getZoom(), 17);
+        let target = L.latLng(lat, lng);
+        // On phones the bottom sheet covers the lower half: aim for a point higher up the screen.
+        const { x: width, y: height } = map.getSize();
+        if (width < 768) target = map.unproject(map.project(target, z).add([0, height * 0.22]), z);
+        map.flyTo(target, z, { duration: 0.6 });
     },
     /** Zooms so the whole circle of `radius` meters around the point is visible. */
     showRadius(lat: number, lng: number, radius: number) {

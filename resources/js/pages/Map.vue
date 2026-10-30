@@ -13,6 +13,7 @@ import OdpPanel from '@/components/map/OdpPanel.vue';
 import PortDialog from '@/components/map/PortDialog.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { isUrl, parseCoordinates, precisionWarning, resolveLocation } from '@/lib/coordinates';
 import { currentPosition, getJson } from '@/lib/http';
@@ -503,12 +504,16 @@ async function showMyLocation() {
 
 const defaultAreaId = computed(() => filters.value.area_id ?? props.areas[0]?.id ?? null);
 const panelOpen = computed(() => mode.value !== 'idle');
+
+// Phone bottom sheet: starts at half height so the map stays visible; collapses again when the panel content changes.
+const sheetExpanded = ref(false);
+watch([mode, selected], () => (sheetExpanded.value = false));
 </script>
 
 <template>
     <Head title="Peta Jaringan" />
 
-    <AppLayout :breadcrumbs="breadcrumbs">
+    <AppLayout :breadcrumbs="breadcrumbs" map-page>
         <div class="relative min-h-[480px] flex-1">
             <!-- Fixed to the content area so only the panel scrolls, not the page. -->
             <div class="absolute inset-0 flex overflow-hidden md:rounded-b-xl">
@@ -536,19 +541,28 @@ const panelOpen = computed(() => mode.value !== 'idle');
                         @draft-remove="removeCablePoint"
                     />
 
-                    <!-- Toolbar -->
-                    <div class="pointer-events-none absolute left-14 right-14 top-2 z-10 flex flex-wrap items-start gap-2">
-                        <div class="pointer-events-auto relative w-full max-w-64">
-                            <Search class="absolute left-2.5 top-3 size-4 text-muted-foreground" />
+                    <!-- Phones: no page header, so the menu floats over the map (the zoom buttons are hidden there; pinch instead). -->
+                    <SidebarTrigger class="absolute left-2 top-2 z-10 size-10 rounded-full border bg-background shadow md:hidden" />
+
+                    <!-- Toolbar: docked at the bottom on phones (within thumb reach), along the top on desktop -->
+                    <div
+                        class="pointer-events-none absolute inset-x-2 bottom-[calc(env(safe-area-inset-bottom)_+_1.5rem)] z-10 flex flex-col-reverse gap-2 md:inset-x-auto md:bottom-auto md:left-14 md:right-14 md:top-2 md:flex-row md:flex-wrap md:items-start"
+                        :class="panelOpen && 'max-md:hidden'"
+                    >
+                        <div class="pointer-events-auto relative w-full md:max-w-64">
+                            <Search class="absolute left-3 top-3.5 size-4 text-muted-foreground md:left-2.5 md:top-3" />
                             <Input
                                 v-model="query"
+                                type="search"
+                                enterkeyhint="search"
                                 placeholder="ODC/ODP, pelanggan, koordinat, link Maps…"
-                                class="h-10 bg-background pl-8 shadow"
+                                class="h-11 rounded-full bg-background pl-9 text-base shadow-lg md:h-10 md:rounded-md md:pl-8 md:text-sm md:shadow"
                                 @keydown.enter="queryIsLocation && nearestFromQuery()"
                             />
+                            <!-- Results open upwards on phones, so they stay above the keyboard and the thumb. -->
                             <div
                                 v-if="queryIsLocation"
-                                class="absolute mt-1 w-full overflow-hidden rounded-md border bg-background text-sm shadow-lg"
+                                class="absolute bottom-full mb-1 w-full overflow-hidden rounded-md border bg-background text-sm shadow-lg md:bottom-auto md:top-full md:mb-0 md:mt-1"
                             >
                                 <button
                                     type="button"
@@ -560,12 +574,12 @@ const panelOpen = computed(() => mode.value !== 'idle');
                             </div>
                             <ul
                                 v-if="searchResults.length"
-                                class="absolute mt-1 w-full overflow-hidden rounded-md border bg-background text-sm shadow-lg"
+                                class="absolute bottom-full mb-1 max-h-[50svh] w-full overflow-y-auto rounded-md border bg-background text-sm shadow-lg md:bottom-auto md:top-full md:mb-0 md:mt-1"
                             >
                                 <li v-for="r in searchResults" :key="r.kind + r.id">
                                     <button
                                         type="button"
-                                        class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted"
+                                        class="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-muted md:py-2"
                                         @click="pickSearchResult(r)"
                                     >
                                         <span
@@ -584,26 +598,30 @@ const panelOpen = computed(() => mode.value !== 'idle');
                             </ul>
                         </div>
 
-                        <div class="pointer-events-auto flex flex-wrap gap-2">
-                            <template v-if="can.edit">
-                                <Button size="sm" class="h-10 shadow" @click="startCreate('odc')"><Box class="size-4" /> ODC</Button>
-                                <Button size="sm" class="h-10 shadow" @click="startCreate('odp')"><CircleDot class="size-4" /> ODP</Button>
-                                <Button size="sm" class="h-10 shadow" @click="startCable()"><Spline class="size-4" /> Kabel</Button>
-                            </template>
+                        <!-- One swipeable row on phones; wraps on desktop. -->
+                        <div
+                            class="pointer-events-auto -mx-2 flex gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0 [&>*]:shrink-0"
+                        >
                             <Button size="sm" variant="secondary" class="h-10 border shadow" @click="startNearest"
                                 ><Radar class="size-4" /> Terdekat</Button
                             >
                             <Button
-                                size="icon"
+                                size="sm"
                                 variant="secondary"
-                                class="size-10 border shadow"
+                                class="h-10 border shadow md:w-10 md:px-0"
                                 title="Lokasi saya"
                                 :disabled="locatingMe"
                                 @click="showMyLocation"
                             >
                                 <LoaderCircle v-if="locatingMe" class="size-4 animate-spin" />
                                 <Crosshair v-else class="size-4" />
+                                <span class="md:hidden">Lokasi saya</span>
                             </Button>
+                            <template v-if="can.edit">
+                                <Button size="sm" class="h-10 shadow" @click="startCreate('odc')"><Box class="size-4" /> ODC</Button>
+                                <Button size="sm" class="h-10 shadow" @click="startCreate('odp')"><CircleDot class="size-4" /> ODP</Button>
+                                <Button size="sm" class="h-10 shadow" @click="startCable()"><Spline class="size-4" /> Kabel</Button>
+                            </template>
                             <NativeSelect v-if="areas.length > 1" v-model="filters.area_id" class="h-10 w-auto shadow">
                                 <option :value="null">Semua area</option>
                                 <option v-for="area in areas" :key="area.id" :value="area.id">{{ area.name }}</option>
@@ -637,13 +655,15 @@ const panelOpen = computed(() => mode.value !== 'idle');
 
                     <div
                         v-if="truncated"
-                        class="absolute bottom-6 left-1/2 z-10 -translate-x-1/2 rounded-md bg-amber-100 px-3 py-1 text-xs text-amber-900 shadow"
+                        :class="!panelOpen && 'max-md:bottom-32'"
+                        class="absolute bottom-6 left-1/2 z-10 w-max max-w-[90%] -translate-x-1/2 rounded-md bg-amber-100 px-3 py-1 text-xs text-amber-900 shadow"
                     >
                         Terlalu banyak titik di layar — perbesar peta untuk melihat semuanya.
                     </div>
                     <div
                         v-else-if="showCustomers && (zoom < CUSTOMER_MIN_ZOOM || customersTruncated)"
-                        class="absolute bottom-6 left-1/2 z-10 -translate-x-1/2 rounded-md bg-teal-50 px-3 py-1 text-xs text-teal-900 shadow"
+                        :class="!panelOpen && 'max-md:bottom-32'"
+                        class="absolute bottom-6 left-1/2 z-10 w-max max-w-[90%] -translate-x-1/2 rounded-md bg-teal-50 px-3 py-1 text-xs text-teal-900 shadow"
                     >
                         {{
                             zoom < CUSTOMER_MIN_ZOOM
@@ -653,11 +673,20 @@ const panelOpen = computed(() => mode.value !== 'idle');
                     </div>
                 </div>
 
-                <!-- Panel: bottom sheet on phones, right column on desktop -->
+                <!-- Panel: bottom sheet on phones (half height so the map stays usable, tap the handle to expand), right column on desktop -->
                 <aside
                     v-if="panelOpen"
-                    class="absolute inset-x-0 bottom-0 z-20 max-h-[65%] overflow-y-auto rounded-t-xl border-t bg-background p-4 shadow-2xl md:static md:max-h-none md:w-96 md:rounded-none md:border-l md:border-t-0 md:shadow-none"
+                    class="absolute inset-x-0 bottom-0 z-20 overflow-y-auto overscroll-contain rounded-t-2xl border-t bg-background px-4 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-2xl transition-[max-height] duration-200 md:static md:max-h-none md:w-96 md:rounded-none md:border-l md:border-t-0 md:p-4 md:shadow-none"
+                    :class="sheetExpanded ? 'max-h-[88%]' : 'max-h-[45%]'"
                 >
+                    <button
+                        type="button"
+                        class="sticky top-0 z-10 -mx-4 mb-2 flex w-[calc(100%+2rem)] justify-center bg-background pb-2 pt-2.5 md:hidden"
+                        :title="sheetExpanded ? 'Perkecil panel' : 'Perbesar panel'"
+                        @click="sheetExpanded = !sheetExpanded"
+                    >
+                        <span class="h-1.5 w-10 rounded-full bg-muted-foreground/40" />
+                    </button>
                     <div
                         v-if="mode === 'detail' && loadingDetail && !odpDetail && !odcDetail && !cableDetail && !customerDetail"
                         class="flex items-center gap-2 text-sm text-muted-foreground"

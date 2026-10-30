@@ -2,6 +2,7 @@
 import NetworkMap from '@/components/map/NetworkMap.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { formatLength } from '@/lib/cables';
 import { geocode, precisionWarning, resolveLocation, type GeocodeResult, type LocationPrecision } from '@/lib/coordinates';
@@ -229,20 +230,28 @@ async function copyResult() {
 <template>
     <Head title="Cek Coverage" />
 
-    <AppLayout :breadcrumbs="breadcrumbs">
+    <AppLayout :breadcrumbs="breadcrumbs" map-page>
         <div class="relative min-h-[560px] flex-1">
-            <div class="absolute inset-0 flex flex-col overflow-hidden md:flex-row md:rounded-b-xl">
-                <!-- Panel: top on phones, left column on desktop -->
-                <section class="max-h-[55%] shrink-0 overflow-y-auto border-b p-4 md:max-h-none md:w-[400px] md:border-b-0 md:border-r">
-                    <h1 class="text-lg font-semibold">Cek coverage calon pelanggan</h1>
-                    <p class="mb-3 text-sm text-muted-foreground">Batas jarak ODP ke pelanggan: {{ radius }} m.</p>
+            <div class="absolute inset-0 flex flex-col-reverse overflow-hidden md:flex-row md:rounded-b-xl">
+                <!-- Panel: bottom on phones (search within thumb reach, map above), left column on desktop -->
+                <section
+                    class="max-h-[55%] shrink-0 overflow-y-auto overscroll-contain rounded-t-2xl border-t p-4 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-[0_-4px_12px_rgba(0,0,0,.08)] md:max-h-none md:w-[400px] md:rounded-none md:border-r md:border-t-0 md:pb-4 md:shadow-none"
+                >
+                    <h1 class="text-lg font-semibold max-md:hidden">Cek coverage calon pelanggan</h1>
+                    <p class="mb-3 text-sm text-muted-foreground max-md:mb-2 max-md:text-xs">Batas jarak ODP ke pelanggan: {{ radius }} m.</p>
 
                     <form class="flex gap-2" @submit.prevent="search">
                         <div class="relative flex-1">
-                            <Search class="absolute left-2.5 top-3 size-4 text-muted-foreground" />
-                            <Input v-model="query" class="h-10 pl-8" placeholder="Alamat, koordinat, atau link Google Maps" />
+                            <Search class="absolute left-2.5 top-3.5 size-4 text-muted-foreground md:top-3" />
+                            <Input
+                                v-model="query"
+                                type="search"
+                                enterkeyhint="search"
+                                class="h-11 pl-8 text-base md:h-10 md:text-sm"
+                                placeholder="Alamat, koordinat, atau link Google Maps"
+                            />
                         </div>
-                        <Button type="submit" class="h-10" :disabled="searching || checking">
+                        <Button type="submit" class="h-11 md:h-10" :disabled="searching || checking">
                             <LoaderCircle v-if="searching || checking" class="size-4 animate-spin" />
                             <span v-else>Cek</span>
                         </Button>
@@ -348,6 +357,7 @@ async function copyResult() {
 
                 <!-- Map -->
                 <div class="relative min-h-[260px] flex-1">
+                    <SidebarTrigger class="absolute left-2 top-2 z-10 size-10 rounded-full border bg-background shadow md:hidden" />
                     <NetworkMap
                         ref="mapRef"
                         :odcs="odcs"

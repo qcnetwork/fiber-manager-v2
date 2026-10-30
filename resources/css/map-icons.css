@@ -31,3 +31,10 @@
         0 0 0 5px var(--c),
         0 2px 6px rgba(0, 0, 0, 0.5);
 }
+
+/* Phones: pinch to zoom; the zoom buttons would sit under the floating menu button. */
+@media (max-width: 767px) {
+    .leaflet-control-zoom {
+        display: none;
+    }
+}

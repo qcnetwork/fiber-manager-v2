@@ -7,6 +7,8 @@ import type { BreadcrumbItemType } from '@/types';
 
 interface Props {
     breadcrumbs?: BreadcrumbItemType[];
+    /** Full-screen map pages drop the header on phones and show their own menu button. */
+    mapPage?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
@@ -18,7 +20,7 @@ withDefaults(defineProps<Props>(), {
     <AppShell variant="sidebar">
         <AppSidebar />
         <AppContent variant="sidebar">
-            <AppSidebarHeader :breadcrumbs="breadcrumbs" />
+            <AppSidebarHeader :breadcrumbs="breadcrumbs" :class="mapPage && 'max-md:hidden'" />
             <slot />
         </AppContent>
     </AppShell>
