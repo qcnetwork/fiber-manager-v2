@@ -41,6 +41,11 @@ class KmlReader
             $folders = $this->folderNames($placemark);
             $label = 'KML "'.($name !== '' ? $name : 'tanpa nama').'"';
 
+            // POPs in our own export are for viewing only; they are managed in the app.
+            if (mb_strtolower($extended['tipe'] ?? '') === 'pop') {
+                continue;
+            }
+
             foreach ($placemark->getElementsByTagNameNS('*', 'Point') as $point) {
                 $coords = $this->coordinates($point);
                 if (! $coords) {

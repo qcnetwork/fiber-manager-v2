@@ -40,7 +40,7 @@ const mainNavItems = computed(() => (page.props.auth.user.role === 'sales' ? [co
 
 const adminNavItems: NavItem[] = [
     {
-        title: 'Area / Cabang',
+        title: 'Area / POP',
         href: '/admin/areas',
         icon: MapPinned,
     },

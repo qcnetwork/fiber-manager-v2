@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { currentPosition, getJson } from '@/lib/http';
-import type { Area, AssetKind, Odc, OdcOption, Odp } from '@/types';
+import type { Area, AssetKind, Odc, OdcOption, Odp, OltPortStatus } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import { useDebounceFn } from '@vueuse/core';
 import { Crosshair, LoaderCircle, X } from 'lucide-vue-next';
@@ -28,6 +28,7 @@ const emit = defineEmits<{
 }>();
 
 const odp = props.kind === 'odp' ? (props.asset as Odp | null) : null;
+const odc = props.kind === 'odc' ? (props.asset as Odc | null) : null;
 const isNew = !props.asset;
 const label = props.kind === 'odc' ? 'ODC' : 'ODP';
 
@@ -47,6 +48,8 @@ const form = useForm({
     odc_id: odp?.odc_id ?? props.defaultOdcId ?? null,
     odc_port: odp?.odc_port ?? null,
     pole_number: odp?.pole_number ?? '',
+    // ODC only: the OLT PON port feeding it
+    olt_port_id: odc?.olt_port_id ?? null,
 });
 
 // The map marker is the source of truth for the location; typed coordinates move it back.
@@ -89,6 +92,29 @@ watch(() => form.area_id, loadOdcOptions);
 // Keep the "distance to ODC" hints current while the marker is being placed.
 watch(() => props.location, useDebounceFn(loadOdcOptions, 400));
 
+// ---- ODC uplink: PON ports of the OLTs at the chosen area's POP
+interface OltOption {
+    id: number;
+    code: string;
+    ports: { id: number; slot: number; port: number; status: OltPortStatus; odcs: { id: number; code: string }[] }[];
+}
+const oltOptions = ref<OltOption[]>([]);
+async function loadOltOptions() {
+    if (props.kind !== 'odc' || !form.area_id) return;
+    oltOptions.value = await getJson<OltOption[]>(route('olts.options'), { area_id: form.area_id });
+    // A port of another POP no longer applies after changing the area.
+    if (form.olt_port_id && !oltOptions.value.some((o) => o.ports.some((p) => p.id === form.olt_port_id))) form.olt_port_id = null;
+}
+onMounted(loadOltOptions);
+watch(() => form.area_id, loadOltOptions);
+
+function portLabel(port: OltOption['ports'][number]) {
+    const others = port.odcs.filter((o) => o.id !== odc?.id).map((o) => o.code);
+    return [`Slot ${port.slot} / Port ${port.port}`, port.status === 'rusak' ? 'rusak' : null, others.length ? `dipakai ${others.join(', ')}` : null]
+        .filter(Boolean)
+        .join(' — ');
+}
+
 const freeOdcPorts = computed(() => {
     const odc = odcOptions.value.find((o) => o.id === Number(form.odc_id));
     if (!odc) return [];
@@ -106,9 +132,10 @@ function submit() {
     form.transform((data) => {
         if (props.kind === 'odc') {
             const { odc_id, odc_port, pole_number, ...rest } = data; // eslint-disable-line @typescript-eslint/no-unused-vars
-            return rest;
+            return { ...rest, olt_port_id: rest.olt_port_id || null };
         }
-        return { ...data, odc_id: data.odc_id || null, odc_port: data.odc_id ? data.odc_port : null };
+        const { olt_port_id, ...rest } = data; // eslint-disable-line @typescript-eslint/no-unused-vars
+        return { ...rest, odc_id: rest.odc_id || null, odc_port: rest.odc_id ? rest.odc_port : null };
     });
 
     if (isNew) form.post(route(`${resource}.store`), options);
@@ -178,6 +205,18 @@ function submit() {
             <Label for="address">Alamat</Label>
             <Input id="address" v-model="form.address" />
             <InputError :message="form.errors.address" />
+        </div>
+
+        <div v-if="kind === 'odc'" class="grid gap-1.5">
+            <Label for="olt_port_id">Port PON OLT (sumber)</Label>
+            <NativeSelect id="olt_port_id" v-model="form.olt_port_id">
+                <option :value="null">— Belum tersambung —</option>
+                <optgroup v-for="olt in oltOptions" :key="olt.id" :label="olt.code">
+                    <option v-for="port in olt.ports" :key="port.id" :value="port.id">{{ portLabel(port) }}</option>
+                </optgroup>
+            </NativeSelect>
+            <p v-if="!oltOptions.length" class="text-xs text-muted-foreground">Belum ada OLT di POP area ini. Tambahkan lewat titik POP di peta.</p>
+            <InputError :message="form.errors.olt_port_id" />
         </div>
 
         <template v-if="kind === 'odp'">

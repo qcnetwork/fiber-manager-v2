@@ -58,9 +58,9 @@ class Cable extends Model
     }
 
     /**
-     * Keeps connected cable ends on an ODC/ODP after it is moved, and lets go of it when it is deleted.
+     * Keeps connected cable ends on a POP/ODC/ODP after it is moved, and lets go of it when it is deleted.
      */
-    public static function followEndpoint(Odc|Odp $asset, bool $deleted = false): void
+    public static function followEndpoint(Area|Odc|Odp $asset, bool $deleted = false): void
     {
         $type = $asset->getMorphClass();
 
@@ -75,6 +75,9 @@ class Cable extends Model
                     $cable->fill(["{$end}_type" => null, "{$end}_id" => null]);
                 } else {
                     $path = $cable->path;
+                    if ($asset->lat === null || $asset->lng === null) {
+                        continue; // a POP whose location was cleared: leave the line where it is
+                    }
                     $path[$end === 'from' ? 0 : count($path) - 1] = [$asset->lat, $asset->lng];
                     $cable->path = $path;
                 }

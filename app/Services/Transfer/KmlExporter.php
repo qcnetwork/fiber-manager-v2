@@ -2,13 +2,14 @@
 
 namespace App\Services\Transfer;
 
+use App\Models\Area;
 use App\Models\Cable;
 use App\Models\Odc;
 use App\Models\Odp;
 use XMLWriter;
 
 /**
- * Writes ODC, ODP and cables as KML for Google Earth / Google My Maps.
+ * Writes POPs, ODC, ODP and cables as KML for Google Earth / Google My Maps.
  *
  * Each placemark carries its fields as ExtendedData (tipe, kapasitas, ...), which KmlReader reads back,
  * so a KML export can also be re-imported.
@@ -36,6 +37,22 @@ class KmlExporter
         $xml->writeElement('name', $title);
 
         $this->styles($xml);
+
+        $xml->startElement('Folder');
+        $xml->writeElement('name', 'POP');
+        Area::query()
+            ->whereNotNull('center_lat')
+            ->when($areaId, fn ($q) => $q->whereKey($areaId))
+            // Areas have no area scope; users tied to one area only get their own POP.
+            ->when(auth()->user()?->seesAllAreas() === false, fn ($q) => $q->whereKey(auth()->user()->area_id))
+            ->with('olts:id,area_id,code')
+            ->orderBy('name')
+            ->get()
+            ->each(fn (Area $pop) => $this->point($xml, $pop->name, 'pop', $pop->lat, $pop->lng, [
+                'tipe' => 'pop', 'kode' => $pop->code, 'alamat' => $pop->address, 'olt' => $pop->olts->pluck('code')->implode(', '),
+                'catatan' => $pop->notes,
+            ]));
+        $xml->endElement();
 
         $xml->startElement('Folder');
         $xml->writeElement('name', 'ODC');
@@ -70,7 +87,7 @@ class KmlExporter
     private function styles(XMLWriter $xml): void
     {
         $icons = [
-            'odc-aktif' => 'blu-square', 'odc-rencana' => 'wht-square', 'odc-rusak' => 'purple-square',
+            'pop' => 'red-stars', 'odc-aktif' => 'blu-square', 'odc-rencana' => 'wht-square', 'odc-rusak' => 'purple-square',
             'odp-hijau' => 'grn-circle', 'odp-kuning' => 'ylw-circle', 'odp-merah' => 'red-circle',
             'odp-rencana' => 'wht-circle', 'odp-rusak' => 'purple-circle',
         ];
@@ -78,7 +95,7 @@ class KmlExporter
             $xml->startElement('Style');
             $xml->writeAttribute('id', $id);
             $xml->startElement('IconStyle');
-            $xml->writeElement('scale', str_starts_with($id, 'odc') ? '1.1' : '0.8');
+            $xml->writeElement('scale', str_starts_with($id, 'odp') ? '0.8' : '1.1');
             $xml->startElement('Icon');
             $xml->writeElement('href', sprintf(self::ICON, $icon));
             $xml->endElement();

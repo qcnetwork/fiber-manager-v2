@@ -42,6 +42,8 @@ class MigrateFiberManagerTest extends TestCase
             $t->string('code')->nullable();
             $t->decimal('lat', 10, 8)->nullable();
             $t->decimal('lng', 11, 8)->nullable();
+            $t->text('address')->nullable();
+            $t->text('description')->nullable();
         });
         $schema->create('olt', function (Blueprint $t) {
             $t->integer('id');
@@ -57,7 +59,16 @@ class MigrateFiberManagerTest extends TestCase
         $schema->create('pon', function (Blueprint $t) {
             $t->integer('id');
             $t->integer('olt_id');
+            $t->integer('card_number');
             $t->string('name');
+            $t->integer('port_count')->nullable();
+        });
+        $schema->create('pon_ports', function (Blueprint $t) {
+            $t->integer('id');
+            $t->integer('pon_id');
+            $t->integer('port_number');
+            $t->string('status')->default('available');
+            $t->text('description')->nullable();
         });
         $schema->create('odc', function (Blueprint $t) {
             $t->integer('id');
@@ -116,9 +127,14 @@ class MigrateFiberManagerTest extends TestCase
     private function seedLegacyData(): void
     {
         $db = DB::connection('legacy');
-        $db->table('pop')->insert(['id' => 1, 'name' => 'POP Kajen', 'code' => 'KJN', 'lat' => -7.0, 'lng' => 109.5]);
-        $db->table('olt')->insert(['id' => 5, 'pop_id' => 1, 'name' => 'ZTE KJN-01', 'model' => 'ZTE-C320', 'total_pon_ports' => 2]);
-        $db->table('pon')->insert(['id' => 13, 'olt_id' => 5, 'name' => 'PON Card 1']);
+        $db->table('pop')->insert(['id' => 1, 'name' => 'POP Kajen', 'code' => 'KJN', 'lat' => -7.0, 'lng' => 109.5, 'address' => 'Jl. Raya Kajen', 'description' => null]);
+        $db->table('olt')->insert(['id' => 5, 'pop_id' => 1, 'name' => 'ZTE KJN-01', 'model' => 'ZTE-C320', 'ip_address' => '10.0.0.2', 'total_pon_ports' => 2]);
+        // Card numbers are the slots; the ODC below is on card 2.
+        $db->table('pon')->insert([
+            ['id' => 12, 'olt_id' => 5, 'card_number' => 1, 'name' => 'PON Card 1', 'port_count' => 8],
+            ['id' => 13, 'olt_id' => 5, 'card_number' => 2, 'name' => 'PON Card 2', 'port_count' => 4],
+        ]);
+        $db->table('pon_ports')->insert(['id' => 1, 'pon_id' => 12, 'port_number' => 3, 'status' => 'maintenance', 'description' => 'laser lemah']);
         $db->table('odc')->insert([
             'id' => 3, 'name' => 'KJN-0101 MS-02', 'lat' => -7.01, 'lng' => 109.5, 'capacity' => 8, 'pon_id' => 13, 'pon_port_number' => 2, 'olt_id' => 5,
             // Feeder from the POP to the ODC.
@@ -162,12 +178,16 @@ class MigrateFiberManagerTest extends TestCase
         $area = Area::sole();
         $this->assertSame(['KJN', 'POP Kajen'], [$area->code, $area->name]);
 
+        $this->assertSame([-7.0, 109.5, 'Jl. Raya Kajen'], [$area->lat, $area->lng, $area->address]); // the area is the POP
+
         $olt = Olt::sole();
-        $this->assertSame([-7.0, 109.5], [$olt->lat, $olt->lng]); // placed at its POP
+        $this->assertSame(['10.0.0.2', 12, [1 => 8, 2 => 4]], [$olt->ip_address, $olt->pon_ports, $olt->cards()]);
+        $this->assertSame(['rusak', 'laser lemah'], [$olt->ports->firstWhere(fn ($p) => $p->slot === 1 && $p->port === 3)->status, $olt->ports->firstWhere('status', 'rusak')->notes]);
 
         $odc = Odc::sole();
-        $this->assertSame(['KJN-0101 MS-02', $olt->id, 2, $area->id], [$odc->code, $odc->olt_id, $odc->olt_pon_port, $odc->area_id]);
-        $this->assertStringContainsString('PON Card 1', $odc->notes);
+        $this->assertSame(['KJN-0101 MS-02', $area->id], [$odc->code, $odc->area_id]);
+        $this->assertSame([$olt->id, 2, 2], [$odc->oltPort->olt_id, $odc->oltPort->slot, $odc->oltPort->port]);
+        $this->assertStringContainsString('PON Card 2', $odc->notes);
 
         $a = Odp::firstWhere('code', 'ODP-A');
         $b = Odp::firstWhere('code', 'ODP-B');
@@ -211,7 +231,7 @@ class MigrateFiberManagerTest extends TestCase
         $odpA = Odp::firstWhere('code', 'ODP-A');
 
         $feeder = Cable::where('type', 'feeder')->sole();
-        $this->assertSame(['olt', 'odc', $odc->id], [$feeder->from_type, $feeder->to_type, $feeder->to_id]);
+        $this->assertSame(['pop', Area::sole()->id, 'odc', $odc->id], [$feeder->from_type, $feeder->from_id, $feeder->to_type, $feeder->to_id]);
 
         $distribusi = Cable::where('type', 'distribusi')->sole();
         $this->assertSame([$odc->id, $odpA->id], [$distribusi->from_id, $distribusi->to_id]);

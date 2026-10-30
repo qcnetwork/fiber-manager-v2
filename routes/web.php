@@ -11,7 +11,10 @@ use App\Http\Controllers\MapController;
 use App\Http\Controllers\OdcController;
 use App\Http\Controllers\OdpController;
 use App\Http\Controllers\OdpPortController;
+use App\Http\Controllers\OltController;
+use App\Http\Controllers\OltPortController;
 use App\Http\Controllers\PhotoController;
+use App\Http\Controllers\PopController;
 use App\Http\Middleware\EnsureNotSales;
 use App\Http\Middleware\EnsureSuperAdmin;
 use Illuminate\Support\Facades\Route;
@@ -32,6 +35,16 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
 
     Route::get('map', [MapController::class, 'index'])->name('map');
     Route::get('map/nearest', [MapController::class, 'nearest'])->name('map.nearest');
+
+    Route::get('pops/{pop}', [PopController::class, 'show'])->name('pops.show');
+    Route::patch('pops/{pop}', [PopController::class, 'update'])->name('pops.update');
+    Route::get('olts/options', [OltController::class, 'options'])->name('olts.options');
+    Route::post('olts', [OltController::class, 'store'])->name('olts.store');
+    Route::put('olts/{olt}', [OltController::class, 'update'])->name('olts.update');
+    Route::delete('olts/{olt}', [OltController::class, 'destroy'])->name('olts.destroy');
+    Route::patch('olt-ports/{port}', [OltPortController::class, 'update'])->name('olt-ports.update');
+    Route::post('olt-ports/{port}/odcs', [OltPortController::class, 'connect'])->name('olt-ports.connect');
+    Route::delete('olt-ports/{port}/odcs/{odc}', [OltPortController::class, 'disconnect'])->name('olt-ports.disconnect');
 
     Route::get('odcs/options', [OdcController::class, 'options'])->name('odcs.options');
     Route::apiResource('odcs', OdcController::class)->except('index');

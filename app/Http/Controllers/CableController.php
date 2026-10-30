@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\CableRequest;
+use App\Models\Area;
 use App\Models\Cable;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
@@ -13,9 +14,16 @@ class CableController extends Controller
 {
     public function show(Cable $cable): JsonResponse
     {
-        $cable->load(['area:id,code,name', 'from:id,code,lat,lng', 'to:id,code,lat,lng']);
+        // Ends can be a POP (an area, located by center_lat/lng), so columns aren't picked in the query.
+        $cable->load(['area:id,code,name', 'from', 'to']);
+        $end = fn ($asset) => $asset ? [
+            'id' => $asset->id,
+            'code' => $asset instanceof Area ? $asset->name : $asset->code,
+            'lat' => $asset->lat,
+            'lng' => $asset->lng,
+        ] : null;
 
-        return response()->json(['cable' => $cable]);
+        return response()->json(['cable' => [...$cable->toArray(), 'from' => $end($cable->from), 'to' => $end($cable->to)]]);
     }
 
     public function store(CableRequest $request): RedirectResponse

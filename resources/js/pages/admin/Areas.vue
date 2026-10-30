@@ -14,7 +14,7 @@ type AreaRow = Area & { users_count: number; odcs_count: number; odps_count: num
 
 defineProps<{ areas: AreaRow[] }>();
 
-const breadcrumbs: BreadcrumbItem[] = [{ title: 'Area / Cabang', href: '/admin/areas' }];
+const breadcrumbs: BreadcrumbItem[] = [{ title: 'Area / POP', href: '/admin/areas' }];
 
 const editing = ref<AreaRow | null>(null);
 const form = useForm({ code: '', name: '', center_lat: '' as string | number, center_lng: '' as string | number });
@@ -48,7 +48,7 @@ function destroy(area: AreaRow) {
 </script>
 
 <template>
-    <Head title="Area / Cabang" />
+    <Head title="Area / POP" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="grid flex-1 items-start gap-4 p-4 lg:grid-cols-[1fr_22rem]">
@@ -108,12 +108,13 @@ function destroy(area: AreaRow) {
                             <InputError :message="form.errors.name" />
                         </div>
                         <div class="grid gap-1.5">
-                            <Label>Titik tengah peta (opsional)</Label>
+                            <Label>Lokasi POP (opsional)</Label>
                             <div class="grid grid-cols-2 gap-2">
                                 <Input v-model="form.center_lat" inputmode="decimal" placeholder="Latitude" />
                                 <Input v-model="form.center_lng" inputmode="decimal" placeholder="Longitude" />
                             </div>
                             <InputError :message="form.errors.center_lat || form.errors.center_lng" />
+                            <p class="text-xs text-muted-foreground">Area adalah POP: titik ini tampil di peta sebagai lokasi POP dan OLT-nya.</p>
                         </div>
                         <div class="flex gap-2">
                             <Button type="submit" class="flex-1" :disabled="form.processing">Simpan</Button>

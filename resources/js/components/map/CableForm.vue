@@ -4,7 +4,7 @@ import NativeSelect from '@/components/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { cableTypes, formatLength, pathLength } from '@/lib/cables';
+import { cableTypes, endLabel, formatLength, pathLength } from '@/lib/cables';
 import type { Area, Cable, CableEndpoint, CableType, LatLng } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import { LoaderCircle, Undo2, X } from 'lucide-vue-next';
@@ -90,9 +90,9 @@ const endError = computed(() => errors.value.from_id || errors.value.to_id || er
             <div class="mt-1 text-xs text-muted-foreground">{{ path.length }} titik</div>
             <div class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <span class="text-muted-foreground">Dari</span>
-                <span class="font-medium">{{ from ? `${from.type.toUpperCase()} ${from.code}` : '— titik bebas —' }}</span>
+                <span class="font-medium">{{ from ? endLabel(from.type, from.code) : '— titik bebas —' }}</span>
                 <span class="text-muted-foreground">Ke</span>
-                <span class="font-medium">{{ to ? `${to.type.toUpperCase()} ${to.code}` : '— titik bebas —' }}</span>
+                <span class="font-medium">{{ to ? endLabel(to.type, to.code) : '— titik bebas —' }}</span>
             </div>
             <div class="mt-3 flex gap-2">
                 <Button type="button" variant="outline" size="sm" :disabled="!path.length" @click="emit('undo')">

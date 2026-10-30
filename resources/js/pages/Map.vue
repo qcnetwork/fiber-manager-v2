@@ -10,6 +10,10 @@ import NearestPanel from '@/components/map/NearestPanel.vue';
 import NetworkMap from '@/components/map/NetworkMap.vue';
 import OdcPanel from '@/components/map/OdcPanel.vue';
 import OdpPanel from '@/components/map/OdpPanel.vue';
+import OltForm from '@/components/map/OltForm.vue';
+import OltPortDialog from '@/components/map/OltPortDialog.vue';
+import PopForm from '@/components/map/PopForm.vue';
+import PopPanel from '@/components/map/PopPanel.vue';
 import PortDialog from '@/components/map/PortDialog.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +27,7 @@ import type {
     AssetKind,
     BreadcrumbItem,
     Cable,
+    CableEndKind,
     CableEndpoint,
     CableLine,
     Customer,
@@ -36,6 +41,9 @@ import type {
     Odp,
     OdpMarker,
     OdpPort,
+    Olt,
+    Pop,
+    PopMarker,
 } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
 import { useDebounceFn, useFullscreen } from '@vueuse/core';
@@ -81,6 +89,7 @@ function initialView(): { center: [number, number]; zoom: number } {
 const view = initialView();
 
 // ---- Markers in view
+const pops = ref<PopMarker[]>([]);
 const odcs = ref<OdcMarker[]>([]);
 const odps = ref<OdpMarker[]>([]);
 const cables = ref<CableLine[]>([]);
@@ -93,11 +102,12 @@ async function loadFeatures(bbox = lastBbox) {
     if (!bbox) return;
     lastBbox = bbox;
     const requestId = ++featureRequest;
-    const data = await getJson<{ odcs: OdcMarker[]; odps: OdpMarker[]; cables: CableLine[]; truncated: boolean }>(route('map.features'), {
-        bbox,
-        ...filters.value,
-    });
+    const data = await getJson<{ pops: PopMarker[]; odcs: OdcMarker[]; odps: OdpMarker[]; cables: CableLine[]; truncated: boolean }>(
+        route('map.features'),
+        { bbox, ...filters.value },
+    );
     if (requestId !== featureRequest) return; // a newer pan/zoom already answered
+    pops.value = data.pops;
     odcs.value = data.odcs;
     odps.value = data.odps;
     cables.value = data.cables;
@@ -144,46 +154,56 @@ function onBounds(bbox: string, center: [number, number], newZoom: number) {
 }
 
 // ---- Side panel state
-type Mode = 'idle' | 'detail' | 'form' | 'nearest' | 'cable' | 'customer-form';
+type Mode = 'idle' | 'detail' | 'form' | 'nearest' | 'cable' | 'customer-form' | 'pop-form';
 const mode = ref<Mode>('idle');
 const selected = ref<{ kind: MapItemKind; id: number } | null>(null);
+const popDetail = ref<Pop | null>(null);
 const odpDetail = ref<Odp | null>(null);
 const odcDetail = ref<OdcDetail | null>(null);
 const cableDetail = ref<Cable | null>(null);
 const customerDetail = ref<Customer | null>(null);
 const loadingDetail = ref(false);
 
+function clearDetails() {
+    popDetail.value = null;
+    odpDetail.value = null;
+    odcDetail.value = null;
+    cableDetail.value = null;
+    customerDetail.value = null;
+}
+
 async function select(kind: MapItemKind, id: number, fly = false) {
+    // Reloading the same item (after a change) keeps the panel content until the new data arrives.
+    const same = selected.value?.kind === kind && selected.value.id === id;
     mode.value = 'detail';
     selected.value = { kind, id };
     loadingDetail.value = true;
     try {
-        if (kind === 'customer') {
-            odpDetail.value = null;
-            odcDetail.value = null;
-            cableDetail.value = null;
+        if (kind === 'pop') {
+            const pop = (await getJson<{ pop: Pop }>(route('pops.show', { pop: id }))).pop;
+            if (!same) clearDetails();
+            popDetail.value = pop;
+            if (fly && pop.lat !== null && pop.lng !== null) mapRef.value?.flyTo(pop.lat, pop.lng);
+        } else if (kind === 'customer') {
             const customer = (await getJson<{ customer: Customer }>(route('customers.show', { customer: id }))).customer;
+            if (!same) clearDetails();
             customerDetail.value = customer;
             const at = customer.lat !== null && customer.lng !== null ? customer : customer.port?.odp;
             if (fly && at) mapRef.value?.flyTo(at.lat!, at.lng!);
-            return;
-        }
-        customerDetail.value = null;
-        if (kind === 'cable') {
-            odpDetail.value = null;
-            odcDetail.value = null;
-            cableDetail.value = (await getJson<{ cable: Cable }>(route('cables.show', { cable: id }))).cable;
-            return;
-        }
-        cableDetail.value = null;
-        if (kind === 'odp') {
-            odcDetail.value = null;
-            odpDetail.value = (await getJson<{ odp: Odp }>(route('odps.show', { odp: id }))).odp;
-            if (fly) mapRef.value?.flyTo(odpDetail.value.lat, odpDetail.value.lng);
+        } else if (kind === 'cable') {
+            const cable = (await getJson<{ cable: Cable }>(route('cables.show', { cable: id }))).cable;
+            if (!same) clearDetails();
+            cableDetail.value = cable;
+        } else if (kind === 'odp') {
+            const odp = (await getJson<{ odp: Odp }>(route('odps.show', { odp: id }))).odp;
+            if (!same) clearDetails();
+            odpDetail.value = odp;
+            if (fly) mapRef.value?.flyTo(odp.lat, odp.lng);
         } else {
-            odpDetail.value = null;
-            odcDetail.value = await getJson<OdcDetail>(route('odcs.show', { odc: id }));
-            if (fly) mapRef.value?.flyTo(odcDetail.value.odc.lat, odcDetail.value.odc.lng);
+            const odc = await getJson<OdcDetail>(route('odcs.show', { odc: id }));
+            if (!same) clearDetails();
+            odcDetail.value = odc;
+            if (fly) mapRef.value?.flyTo(odc.odc.lat, odc.odc.lng);
         }
     } finally {
         loadingDetail.value = false;
@@ -193,10 +213,7 @@ async function select(kind: MapItemKind, id: number, fly = false) {
 function closePanel() {
     mode.value = 'idle';
     selected.value = null;
-    odpDetail.value = null;
-    odcDetail.value = null;
-    cableDetail.value = null;
-    customerDetail.value = null;
+    clearDetails();
     pick.value = null;
     nearest.value = null;
     draft.value = null;
@@ -232,6 +249,47 @@ function afterCustomerChange() {
 function onCustomerMoved() {
     movingCustomer.value = null;
     afterCustomerChange();
+}
+
+// ---- POP: location, OLTs and their PON ports
+const oltFormPopId = ref<number | null>(null);
+const editingOlt = ref<Olt | null>(null);
+const activeOltPort = ref<{ oltId: number; portId: number } | null>(null);
+
+// Looked up in the latest POP data, so the port dialog shows changes right after saving.
+const activeOlt = computed(() => popDetail.value?.olts.find((o) => o.id === activeOltPort.value?.oltId) ?? null);
+const activePonPort = computed(() => activeOlt.value?.ports.find((p) => p.id === activeOltPort.value?.portId) ?? null);
+
+function openOltForm(olt: Olt | null) {
+    editingOlt.value = olt;
+    oltFormPopId.value = popDetail.value?.id ?? null;
+}
+
+function afterPopChange() {
+    const pop = popDetail.value;
+    oltFormPopId.value = null;
+    pick.value = null;
+    loadFeatures(); // POP port usage and guide lines
+    if (pop) select('pop', pop.id);
+}
+
+function deleteOlt(olt: Olt) {
+    const used = olt.ports.reduce((n, p) => n + p.odcs.length, 0);
+    if (!confirm(`Hapus OLT ${olt.code}?${used ? `\n${used} ODC akan kehilangan sambungan ke OLT.` : ''}`)) return;
+    router.delete(route('olts.destroy', { olt: olt.id }), { preserveScroll: true, preserveState: true, onSuccess: afterPopChange });
+}
+
+function startPopEdit() {
+    const pop = popDetail.value;
+    if (!pop) return;
+    pick.value = pop.lat !== null && pop.lng !== null ? { lat: pop.lat, lng: pop.lng } : { lat: mapCenter.value[0], lng: mapCenter.value[1] };
+    formKey.value++;
+    mode.value = 'pop-form';
+}
+
+function selectOdcFromPop(id: number) {
+    activeOltPort.value = null;
+    select('odc', id, true);
 }
 
 // ---- Create / edit
@@ -283,8 +341,8 @@ function locate(lat: number, lng: number) {
 }
 
 function destroy() {
-    // Customers are released from their port in the port dialog, not deleted here.
-    if (!selected.value || selected.value.kind === 'customer') return;
+    // Customers are released from their port in the port dialog, and POPs are areas (admin page); neither is deleted here.
+    if (!selected.value || selected.value.kind === 'customer' || selected.value.kind === 'pop') return;
     const { kind, id } = selected.value;
     const label = {
         odp: `ODP ${odpDetail.value?.code}?\nSemua data port ODP ini ikut terhapus.`,
@@ -404,13 +462,15 @@ function addCablePoint(lat: number, lng: number) {
 }
 
 /**
- * Clicking an ODC/ODP while drawing attaches the cable end to it.
+ * Clicking a POP/ODC/ODP while drawing attaches the cable end to it.
  */
-function attachCableEnd(kind: AssetKind, id: number) {
-    const asset = kind === 'odc' ? odcs.value.find((o) => o.id === id) : odps.value.find((o) => o.id === id);
+function attachCableEnd(kind: CableEndKind, id: number) {
+    const pop = kind === 'pop' ? pops.value.find((o) => o.id === id) : undefined;
+    const asset = pop ?? (kind === 'odc' ? odcs.value : odps.value).find((o) => o.id === id);
     if (!asset || !draft.value) return;
 
-    const end = { type: kind, id, code: asset.code };
+    // A POP is shown by its name; its code is the area code.
+    const end = { type: kind, id, code: pop ? pop.name : asset.code };
     draft.value.push([asset.lat, asset.lng]);
     if (draft.value.length === 1) draftFrom.value = end;
     else draftTo.value = end;
@@ -457,7 +517,7 @@ function onCableCancel() {
 
 function onMapSelect(kind: MapItemKind, id: number) {
     if (mode.value === 'cable') {
-        if (kind === 'odc' || kind === 'odp') attachCableEnd(kind, id);
+        if (kind === 'pop' || kind === 'odc' || kind === 'odp') attachCableEnd(kind, id);
     } else if (mode.value !== 'customer-form') {
         select(kind, id);
     }
@@ -467,7 +527,7 @@ function onMapSelect(kind: MapItemKind, id: number) {
 function onMapClick(lat: number, lng: number) {
     if (mode.value === 'cable') {
         addCablePoint(lat, lng);
-    } else if (mode.value === 'form' || mode.value === 'customer-form') {
+    } else if (mode.value === 'form' || mode.value === 'customer-form' || mode.value === 'pop-form') {
         pick.value = { lat, lng };
     } else if (mode.value === 'nearest') {
         nearestAt(lat, lng);
@@ -478,10 +538,10 @@ function onMapClick(lat: number, lng: number) {
 
 // ---- Toolbar: search & my location
 const query = ref('');
-const searchResults = ref<{ kind: AssetKind | 'customer'; id: number; code: string; name: string | null; lat: number | null; lng: number | null }[]>(
-    [],
-);
-const kindLabels = { odc: 'ODC', odp: 'ODP', customer: 'PLG' };
+const searchResults = ref<
+    { kind: CableEndKind | 'customer'; id: number; code: string; name: string | null; lat: number | null; lng: number | null }[]
+>([]);
+const kindLabels = { pop: 'POP', odc: 'ODC', odp: 'ODP', customer: 'PLG' };
 // Pasted coordinates or a Google Maps link are a location, not a code to look up.
 const queryIsLocation = computed(() => !!parseCoordinates(query.value) || isUrl(query.value));
 const runSearch = useDebounceFn(async () => {
@@ -497,7 +557,7 @@ function nearestFromQuery() {
     nearestFromText(text);
 }
 
-function pickSearchResult(r: { kind: AssetKind | 'customer'; id: number }) {
+function pickSearchResult(r: { kind: CableEndKind | 'customer'; id: number }) {
     query.value = '';
     searchResults.value = [];
     select(r.kind, r.id, true);
@@ -556,8 +616,9 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         :cables="cables"
                         :draft="mode === 'cable' ? draft : null"
                         :selected="selected"
-                        :pick="mode === 'form' || mode === 'customer-form' ? pick : null"
+                        :pick="mode === 'form' || mode === 'customer-form' || mode === 'pop-form' ? pick : null"
                         :nearest="mode === 'nearest' ? nearest : null"
+                        :pops="pops"
                         :customers="customers"
                         :customer-focus="mode === 'detail' ? customerFocus : null"
                         :center="view.center"
@@ -763,7 +824,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         <span class="h-1.5 w-10 rounded-full bg-muted-foreground/40" />
                     </button>
                     <div
-                        v-if="mode === 'detail' && loadingDetail && !odpDetail && !odcDetail && !cableDetail && !customerDetail"
+                        v-if="mode === 'detail' && loadingDetail && !popDetail && !odpDetail && !odcDetail && !cableDetail && !customerDetail"
                         class="flex items-center gap-2 text-sm text-muted-foreground"
                     >
                         <LoaderCircle class="size-4 animate-spin" /> Memuat…
@@ -817,6 +878,32 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         @add-odp="startCreate('odp', odcDetail.odc.id, odcDetail.odc)"
                         @refresh="refreshSelected"
                         @select-odp="(id) => select('odp', id, true)"
+                        @select-pop="(id) => select('pop', id, true)"
+                    />
+
+                    <PopPanel
+                        v-else-if="mode === 'detail' && popDetail"
+                        :pop="popDetail"
+                        :can-edit="can.edit"
+                        :can-manage="can.delete"
+                        @close="closePanel"
+                        @refresh="refreshSelected"
+                        @edit-location="startPopEdit"
+                        @add-olt="openOltForm(null)"
+                        @edit-olt="openOltForm"
+                        @delete-olt="deleteOlt"
+                        @open-port="(olt, port) => (activeOltPort = { oltId: olt.id, portId: port.id })"
+                        @select-odc="selectOdcFromPop"
+                    />
+
+                    <PopForm
+                        v-else-if="mode === 'pop-form' && popDetail && pick"
+                        :key="formKey"
+                        :pop="popDetail"
+                        :location="pick"
+                        @locate="locate"
+                        @saved="afterPopChange"
+                        @cancel="afterPopChange"
                     />
 
                     <CablePanel
@@ -880,5 +967,16 @@ watch([mode, selected], () => (sheetExpanded.value = false));
 
         <PortDialog :port="activePort" :odp-code="odpDetail?.code ?? ''" @saved="onPortSaved" @close="activePort = null" />
         <MoveCustomerDialog :customer="movingCustomer" @moved="onCustomerMoved" @close="movingCustomer = null" />
+        <OltForm :pop-id="oltFormPopId" :olt="editingOlt" @saved="afterPopChange" @close="oltFormPopId = null" />
+        <OltPortDialog
+            :pop="popDetail"
+            :olt="activeOlt"
+            :port="activePonPort"
+            :can-edit="can.edit"
+            :can-manage="can.delete"
+            @changed="afterPopChange"
+            @select-odc="selectOdcFromPop"
+            @close="activeOltPort = null"
+        />
     </AppLayout>
 </template>

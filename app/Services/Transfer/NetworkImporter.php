@@ -9,6 +9,7 @@ use App\Models\Cable;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\OdpPort;
+use App\Models\Olt;
 use App\Services\GeoService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -35,6 +36,9 @@ class NetworkImporter
 
     /** @var list<array{where: string, message: string}> */
     private array $errors = [];
+
+    /** @var Collection<string, Olt>|null OLTs of the area by upper-case code, loaded when a row names one */
+    private ?Collection $olts = null;
 
     public function __construct(private readonly int $areaId) {}
 
@@ -137,6 +141,9 @@ class NetworkImporter
             $capacity = $this->int($data['kapasitas'] ?? null, $label, 'kapasitas', 1, 1024);
             if ($capacity !== null) {
                 $attrs['capacity'] = $capacity;
+            }
+            if (($portId = $this->oltPort($data, $label)) !== null) {
+                $attrs['olt_port_id'] = $portId;
             }
 
             $plans[mb_strtoupper($code)] = [
@@ -444,6 +451,42 @@ class NetworkImporter
      *
      * @param  class-string<Odc|Odp|Cable>  $class
      */
+    /**
+     * The OLT PON port named by the olt / slot_pon / port_pon cells, which must be at this area's POP.
+     * All three blank: null (an existing ODC keeps its uplink).
+     */
+    private function oltPort(array $data, string $label): ?int
+    {
+        $code = $this->str($data['olt'] ?? null, 50, $label, 'olt');
+        $slot = $this->int($data['slot_pon'] ?? null, $label, 'slot_pon', 0, 99);
+        $port = $this->int($data['port_pon'] ?? null, $label, 'port_pon', 1, 128);
+
+        if ($code === null && $slot === null && $port === null) {
+            return null;
+        }
+        if ($code === null || $slot === null || $port === null) {
+            $this->error($label, 'Kolom olt, slot_pon, dan port_pon harus diisi bersamaan.');
+
+            return null;
+        }
+
+        $this->olts ??= Olt::withoutGlobalScopes()->where('area_id', $this->areaId)->with('ports')->get()
+            ->keyBy(fn (Olt $olt) => mb_strtoupper($olt->code));
+        $olt = $this->olts[mb_strtoupper($code)] ?? null;
+        if (! $olt) {
+            $this->error($label, "OLT \"{$code}\" tidak ada di POP area ini.");
+
+            return null;
+        }
+
+        $match = $olt->ports->first(fn ($p) => $p->slot === $slot && $p->port === $port);
+        if (! $match) {
+            $this->error($label, "OLT {$olt->code} tidak punya port slot {$slot} / port {$port}.");
+        }
+
+        return $match?->id;
+    }
+
     private function existing(string $class, array $rows): Collection
     {
         $codes = collect($rows)->pluck('data.kode')->filter()->map(fn ($c) => trim((string) $c))->unique()->values();

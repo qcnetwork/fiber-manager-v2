@@ -18,6 +18,56 @@ export interface OdcMarker {
     status: AssetStatus;
     capacity: number;
     odps_count: number;
+    /** Location of the POP whose OLT feeds this ODC, for the guide line. */
+    pop_latlng: [number, number] | null;
+}
+
+/** A POP is an area with a location; its OLTs sit there. */
+export interface PopMarker {
+    id: number;
+    code: string;
+    name: string;
+    lat: number;
+    lng: number;
+    olts_count: number;
+    ports_total: number;
+    ports_used: number;
+}
+
+export type OltPortStatus = 'normal' | 'rusak';
+
+export interface OltPort {
+    id: number;
+    olt_id: number;
+    slot: number;
+    port: number;
+    status: OltPortStatus;
+    notes: string | null;
+    odcs: { id: number; code: string; name: string | null; status: AssetStatus }[];
+}
+
+export interface Olt {
+    id: number;
+    area_id: number;
+    code: string;
+    name: string;
+    brand: string | null;
+    ip_address: string | null;
+    notes: string | null;
+    pon_ports: number;
+    ports: OltPort[];
+}
+
+export interface Pop {
+    id: number;
+    code: string;
+    name: string;
+    lat: number | null;
+    lng: number | null;
+    address: string | null;
+    notes: string | null;
+    olts: Olt[];
+    photos?: Photo[];
 }
 
 export interface OdpMarker {
@@ -64,7 +114,17 @@ export interface Photo {
     created_at: string;
 }
 
-export type Odc = AssetFields;
+export interface Odc extends AssetFields {
+    olt_port_id: number | null;
+    olt_port?: {
+        id: number;
+        olt_id: number;
+        slot: number;
+        port: number;
+        status: OltPortStatus;
+        olt: { id: number; area_id: number; code: string; name: string } | null;
+    } | null;
+}
 
 export interface Odp extends AssetFields {
     odc_id: number | null;
@@ -145,9 +205,11 @@ export interface NearestOdp {
 }
 
 export type AssetKind = 'odc' | 'odp';
-export type MapItemKind = AssetKind | 'cable' | 'customer';
+/** What a cable end can attach to. */
+export type CableEndKind = 'pop' | AssetKind;
+export type MapItemKind = CableEndKind | 'cable' | 'customer';
 /** What a photo can belong to. */
-export type PhotoOwner = AssetKind | 'customer';
+export type PhotoOwner = CableEndKind | 'customer';
 
 export type CableType = 'feeder' | 'distribusi' | 'drop';
 export type LatLng = [number, number];
@@ -171,9 +233,9 @@ interface CableEnd {
 
 export interface Cable extends CableLine {
     area_id: number;
-    from_type: AssetKind | null;
+    from_type: CableEndKind | null;
     from_id: number | null;
-    to_type: AssetKind | null;
+    to_type: CableEndKind | null;
     to_id: number | null;
     notes: string | null;
     area?: Pick<Area, 'id' | 'code' | 'name'>;
@@ -182,10 +244,10 @@ export interface Cable extends CableLine {
 }
 
 /**
- * A cable end attached to an ODC/ODP while drawing.
+ * A cable end attached to a POP/ODC/ODP while drawing.
  */
 export interface CableEndpoint {
-    type: AssetKind;
+    type: CableEndKind;
     id: number;
     code: string;
 }

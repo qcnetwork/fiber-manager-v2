@@ -7,6 +7,7 @@ use App\Models\Cable;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\OdpPort;
+use App\Models\OltPort;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Writer;
@@ -24,13 +25,29 @@ class ExcelExporter
         $writer = $this->open($outputPath);
         $inArea = fn ($query) => $query->when($areaId, fn ($q) => $q->where('area_id', $areaId));
 
-        $this->sheet($writer, 'ODC', [...Columns::ODC, 'area', 'jumlah_odp'], [16, 24, 12, 12, 30, 10, 10, 10, 14, 30, 14, 12], first: true);
-        $inArea(Odc::query())->with('area:id,code')->withCount('odps')->orderBy('code')->lazy()->each(
+        $this->sheet($writer, 'ODC', [...Columns::ODC, 'area', 'jumlah_odp'], [16, 24, 12, 12, 30, 10, 10, 10, 14, 30, 18, 9, 9, 14, 12], first: true);
+        $inArea(Odc::query())->with(['area:id,code', 'oltPort.olt:id,code'])->withCount('odps')->orderBy('code')->lazy()->each(
             fn (Odc $odc) => $writer->addRow(Row::fromValues([
                 $odc->code, $odc->name, $odc->lat, $odc->lng, $odc->address, $odc->capacity, $odc->splitter_ratio,
-                $odc->status->value, $odc->installed_at?->format('Y-m-d'), $odc->notes, $odc->area?->code, $odc->odps_count,
+                $odc->status->value, $odc->installed_at?->format('Y-m-d'), $odc->notes,
+                $odc->oltPort?->olt?->code, $odc->oltPort?->slot, $odc->oltPort?->port,
+                $odc->area?->code, $odc->odps_count,
             ])),
         );
+
+        // Informational only: every PON port and what it feeds.
+        $this->sheet($writer, 'POP-OLT', ['pop', 'olt', 'merk', 'ip', 'slot_pon', 'port_pon', 'status_port', 'odc'], [22, 20, 14, 16, 9, 9, 11, 40]);
+        OltPort::query()
+            ->whereHas('olt', $inArea) // through Olt, so the area scope applies too
+            ->with(['olt:id,area_id,code,brand,ip_address', 'olt.area:id,name', 'odcs:id,olt_port_id,code'])
+            ->join('olts', 'olts.id', '=', 'olt_ports.olt_id')
+            ->orderBy('olts.code')->orderBy('olt_ports.slot')->orderBy('olt_ports.port')
+            ->select('olt_ports.*')
+            ->lazy()
+            ->each(fn (OltPort $port) => $writer->addRow(Row::fromValues([
+                $port->olt->area?->name, $port->olt->code, $port->olt->brand, $port->olt->ip_address, $port->slot, $port->port,
+                $port->status, $port->odcs->pluck('code')->implode(', ') ?: null,
+            ])));
 
         $this->sheet($writer, 'ODP', [...Columns::ODP, 'area', 'port_terpakai', 'port_kosong'], [18, 20, 16, 9, 12, 12, 30, 10, 10, 10, 10, 14, 30, 8, 13, 12]);
         $inArea(Odp::query())->with(['area:id,code', 'odc:id,code'])->withPortUsage()->orderBy('code')->lazy()->each(
@@ -81,6 +98,7 @@ class ExcelExporter
             'Data baru wajib punya kode, latitude, dan longitude. Koordinat boleh memakai titik atau koma desimal (-6.9175 atau -6,9175).',
             'kapasitas: ODC 1–1024 port; ODP 1–64 port, umumnya 8 atau 16 (port ODP dibuat otomatis).',
             'splitter: 1:2, 1:4, 1:8, 1:16, atau 1:32. status: aktif, rencana, atau rusak. tanggal_pasang: 2025-01-31 atau 31/01/2025.',
+            'ODC: olt, slot_pon, port_pon (opsional) menyambungkan ODC ke port PON OLT di POP area yang sama, mis. ZTE-C320 KJN-01 | 2 | 4. Ketiganya diisi bersamaan.',
             'ODP: kode_odc diisi kode ODC induk (dari sheet ODC di file ini atau yang sudah ada di aplikasi), port_odc = nomor port di ODC.',
             'Jika ada satu saja baris yang salah, tidak ada data yang disimpan; semua kesalahan ditampilkan beserta nomor barisnya.',
             'Contoh ODC: ODC-BDG-01 | ODC Dago | -6.8915 | 107.6107 | Jl. Dago 10 | 48 | 1:8 | aktif',
@@ -90,7 +108,7 @@ class ExcelExporter
             $writer->addRow(Row::fromValues([$line]));
         }
 
-        $this->sheet($writer, 'ODC', Columns::ODC, [16, 24, 12, 12, 30, 10, 10, 10, 14, 30]);
+        $this->sheet($writer, 'ODC', Columns::ODC, [16, 24, 12, 12, 30, 10, 10, 10, 14, 30, 18, 9, 9]);
         $this->sheet($writer, 'ODP', Columns::ODP, [18, 20, 16, 9, 12, 12, 30, 10, 10, 10, 10, 14, 30]);
 
         $writer->close();

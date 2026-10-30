@@ -25,3 +25,11 @@ export function pathLength(path: [number, number][]): number {
 export function formatLength(meters: number): string {
     return meters >= 1000 ? `${(meters / 1000).toLocaleString('id-ID', { maximumFractionDigits: 2 })} km` : `${Math.round(meters)} m`;
 }
+
+/**
+ * "ODC ODC-01" style label for a cable end; POP names often already start with "POP".
+ */
+export function endLabel(kind: string, code: string): string {
+    const prefix = kind.toUpperCase();
+    return code.toUpperCase().startsWith(prefix) ? code : `${prefix} ${code}`;
+}

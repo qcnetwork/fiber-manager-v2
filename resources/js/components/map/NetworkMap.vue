@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import L, { baseLayers, cableStyle, cableTypes, formatLength, odcIcon, odpIcon, pickIcon, vertexIcon } from '@/lib/leaflet';
-import type { CableLine, CustomerMarker, LatLng, MapItemKind, OdcMarker, OdpMarker } from '@/types';
+import L, { baseLayers, cableStyle, cableTypes, formatLength, odcIcon, odpIcon, pickIcon, popIcon, vertexIcon } from '@/lib/leaflet';
+import type { CableEndKind, CableLine, CustomerMarker, LatLng, MapItemKind, OdcMarker, OdpMarker, PopMarker } from '@/types';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
@@ -20,6 +20,8 @@ const props = defineProps<{
     customers?: CustomerMarker[];
     /** The customer open in the panel, shown even while the customer layer is off. */
     customerFocus?: { lat: number; lng: number; odp_latlng: [number, number] | null } | null;
+    /** POPs in view; only the network map passes them (adds the "POP" layer). */
+    pops?: PopMarker[];
 }>();
 
 const emit = defineEmits<{
@@ -36,6 +38,7 @@ const el = ref<HTMLDivElement>();
 
 let map: L.Map;
 let resizeObserver: ResizeObserver;
+const popLayer = L.layerGroup();
 const odcLayer = L.layerGroup();
 const odpLayer = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 50, showCoverageOnHover: false });
 const linkLayer = L.layerGroup();
@@ -53,16 +56,40 @@ let myLocation: L.CircleMarker | null = null;
 
 const isSelected = (kind: MapItemKind, id: number) => props.selected?.kind === kind && props.selected.id === id;
 
+// Names are typed by people, unlike asset codes.
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+
 function renderAssets() {
+    popLayer.clearLayers();
     odcLayer.clearLayers();
     odpLayer.clearLayers();
     linkLayer.clearLayers();
+
+    for (const pop of props.pops ?? []) {
+        L.marker([pop.lat, pop.lng], { icon: popIcon(isSelected('pop', pop.id)), zIndexOffset: 2000 })
+            .bindTooltip(`<b>${escapeHtml(pop.name)}</b><br>${pop.olts_count} OLT · port PON ${pop.ports_used}/${pop.ports_total}`, {
+                direction: 'top',
+                offset: [0, -14],
+            })
+            .on('click', () => emit('select', 'pop', pop.id))
+            .addTo(popLayer);
+    }
 
     for (const odc of props.odcs) {
         L.marker([odc.lat, odc.lng], { icon: odcIcon(odc.status, isSelected('odc', odc.id)), zIndexOffset: 1000 })
             .bindTooltip(`<b>${odc.code}</b><br>${odc.odps_count} ODP`, { direction: 'top', offset: [0, -10] })
             .on('click', () => emit('select', 'odc', odc.id))
             .addTo(odcLayer);
+
+        if (odc.pop_latlng) {
+            L.polyline([odc.pop_latlng, [odc.lat, odc.lng]], {
+                color: '#0f172a',
+                weight: 1.5,
+                opacity: 0.5,
+                dashArray: '2 6',
+                interactive: false,
+            }).addTo(linkLayer);
+        }
     }
 
     for (const odp of props.odps) {
@@ -150,9 +177,6 @@ function renderCustomerFocus() {
     );
 }
 
-// Customer names are typed by people, unlike asset codes.
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-
 function renderDraft() {
     draftLayer.clearLayers();
     const path = props.draft;
@@ -207,14 +231,15 @@ function renderNearest() {
 const SNAP_PX = 20;
 
 /**
- * While drawing a cable, a click close to an ODC/ODP counts as clicking it; exact hits are hard on a phone.
+ * While drawing a cable, a click close to a POP/ODC/ODP counts as clicking it; exact hits are hard on a phone.
  */
-function assetNear(point: L.Point): { kind: 'odc' | 'odp'; id: number } | null {
-    let best: { kind: 'odc' | 'odp'; id: number; dist: number } | null = null;
-    const consider = (kind: 'odc' | 'odp', asset: { id: number; lat: number; lng: number }) => {
+function assetNear(point: L.Point): { kind: CableEndKind; id: number } | null {
+    let best: { kind: CableEndKind; id: number; dist: number } | null = null;
+    const consider = (kind: CableEndKind, asset: { id: number; lat: number; lng: number }) => {
         const dist = map.latLngToContainerPoint([asset.lat, asset.lng]).distanceTo(point);
         if (dist <= SNAP_PX && (!best || dist < best.dist)) best = { kind, id: asset.id, dist };
     };
+    props.pops?.forEach((pop) => consider('pop', pop));
     props.odcs.forEach((odc) => consider('odc', odc));
     props.odps.forEach((odp) => consider('odp', odp));
     return best;
@@ -235,7 +260,11 @@ onMounted(() => {
         .filter((layer) => !(props.hideCables && layer === cableLayer))
         .forEach((layer) => layer.addTo(map));
 
-    const overlays: Record<string, L.Layer> = { Kabel: cableLayer, ODC: odcLayer, ODP: odpLayer, 'Garis ODC–ODP': linkLayer };
+    const overlays: Record<string, L.Layer> = { Kabel: cableLayer, ODC: odcLayer, ODP: odpLayer, 'Garis bantu': linkLayer };
+    if (props.pops) {
+        popLayer.addTo(map);
+        overlays.POP = popLayer;
+    }
     // Only pages that pass customers offer the layer (never the sales coverage page).
     if (props.customers) overlays.Pelanggan = customerLayer;
     L.control.layers(layers, overlays, { position: 'topright' }).addTo(map);
@@ -264,7 +293,7 @@ onBeforeUnmount(() => {
     map?.remove();
 });
 
-watch([() => props.odcs, () => props.odps, () => props.selected], renderAssets);
+watch([() => props.pops, () => props.odcs, () => props.odps, () => props.selected], renderAssets);
 watch([() => props.cables, () => props.selected], renderCables);
 watch(() => props.draft, renderDraft, { deep: true });
 watch(() => props.pick, renderPick, { deep: true });

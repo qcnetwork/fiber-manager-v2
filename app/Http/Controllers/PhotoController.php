@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Area;
 use App\Models\Photo;
 use App\Services\PhotoService;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -16,7 +17,7 @@ class PhotoController extends Controller
         abort_unless($request->user()->canEditNetwork(), 403);
 
         $data = $request->validate([
-            'photoable_type' => ['required', Rule::in(['odc', 'odp', 'customer'])],
+            'photoable_type' => ['required', Rule::in(['pop', 'odc', 'odp', 'customer'])],
             'photoable_id' => ['required', 'integer'],
             'photo' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
             'caption' => ['nullable', 'string', 'max:255'],
@@ -27,6 +28,7 @@ class PhotoController extends Controller
 
         // Resolved through the area scope, so assets in other areas are a 404.
         $owner = Relation::getMorphedModel($data['photoable_type'])::findOrFail($data['photoable_id']);
+        abort_if($owner instanceof Area && ! $request->user()->canAccessArea($owner->id), 404);
 
         $photos->store($owner, $request->file('photo'), $data['caption'] ?? null, $request->user());
 
@@ -35,7 +37,8 @@ class PhotoController extends Controller
 
     public function destroy(Request $request, Photo $photo): RedirectResponse
     {
-        abort_if($photo->photoable === null, 404);
+        $owner = $photo->photoable;
+        abort_if($owner === null || ($owner instanceof Area && ! $request->user()->canAccessArea($owner->id)), 404);
 
         $user = $request->user();
         abort_unless($user->canDeleteNetwork() || ($user->canEditNetwork() && $photo->user_id === $user->id), 403);

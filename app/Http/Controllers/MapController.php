@@ -7,10 +7,12 @@ use App\Models\Cable;
 use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
+use App\Models\OltPort;
 use App\Services\CoverageService;
 use App\Services\GoogleMapsLink;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 use InvalidArgumentException;
@@ -60,7 +62,11 @@ class MapController extends Controller
 
         $odcs = $inView(Odc::query())
             ->withCount('odps')
-            ->get(['id', 'code', 'name', 'lat', 'lng', 'status', 'capacity']);
+            ->with('oltPort:id,olt_id', 'oltPort.olt:id,area_id')
+            ->get(['id', 'olt_port_id', 'code', 'name', 'lat', 'lng', 'status', 'capacity']);
+
+        $pops = $request->user()->isSales() ? collect() : $this->popsInView($request, $data, [$west, $south, $east, $north]);
+        $popLocations = Area::whereIn('id', $odcs->pluck('oltPort.olt.area_id')->filter()->unique())->get(['id', 'center_lat', 'center_lng'])->keyBy('id');
 
         $odps = $inView(Odp::query())
             ->withPortUsage()
@@ -78,12 +84,56 @@ class MapController extends Controller
 
         return response()->json([
             'cables' => $cables,
-            'odcs' => $odcs,
+            'pops' => $pops,
+            'odcs' => $odcs->map(function (Odc $odc) use ($popLocations) {
+                $pop = $popLocations[$odc->oltPort?->olt?->area_id] ?? null;
+
+                return [
+                    ...$odc->only('id', 'code', 'name', 'lat', 'lng', 'status', 'capacity', 'odps_count'),
+                    // For the guide line from the POP feeding this ODC.
+                    'pop_latlng' => $pop?->center_lat !== null ? [$pop->center_lat, $pop->center_lng] : null,
+                ];
+            }),
             'odps' => $odps->map(fn (Odp $odp) => [
                 ...$odp->only('id', 'odc_id', 'code', 'name', 'lat', 'lng', 'status', 'capacity', 'used_ports', 'free_ports'),
                 'odc_latlng' => $odp->odc ? [$odp->odc->lat, $odp->odc->lng] : null,
             ]),
             'truncated' => $odcs->count() >= self::FEATURE_LIMIT || $odps->count() >= self::FEATURE_LIMIT,
+        ]);
+    }
+
+    /**
+     * POPs (areas with a location) in view, with their OLT and PON port usage.
+     *
+     * @param  array{0: float, 1: float, 2: float, 3: float}  $bbox  west, south, east, north
+     */
+    private function popsInView(Request $request, array $data, array $bbox): Collection
+    {
+        [$west, $south, $east, $north] = $bbox;
+        $user = $request->user();
+
+        $pops = Area::query()
+            ->whereBetween('center_lat', [$south, $north])
+            ->whereBetween('center_lng', [$west, $east])
+            ->when(! $user->seesAllAreas(), fn ($q) => $q->whereKey($user->area_id))
+            ->when($data['area_id'] ?? null, fn ($q, $areaId) => $q->whereKey($areaId))
+            ->withCount('olts')
+            ->get(['id', 'code', 'name', 'center_lat', 'center_lng']);
+
+        $ports = OltPort::query()
+            ->join('olts', 'olts.id', '=', 'olt_ports.olt_id')
+            ->whereIn('olts.area_id', $pops->modelKeys())
+            ->select('olt_ports.id', 'olts.area_id')
+            ->withCount('odcs')
+            ->get()
+            ->groupBy('area_id');
+
+        return $pops->map(fn (Area $pop) => [
+            ...$pop->only('id', 'code', 'name', 'olts_count'),
+            'lat' => $pop->center_lat,
+            'lng' => $pop->center_lng,
+            'ports_total' => $ports->get($pop->id)?->count() ?? 0,
+            'ports_used' => $ports->get($pop->id)?->where('odcs_count', '>', 0)->count() ?? 0,
         ]);
     }
 
@@ -113,7 +163,20 @@ class MapController extends Controller
             ->limit(10)
             ->get(['id', 'name', 'customer_code', 'lat', 'lng']);
 
+        // POPs by area code/name, and by the code of an OLT there.
+        $user = $request->user();
+        $pops = $user->isSales() ? collect() : Area::query()
+            ->whereNotNull('center_lat')
+            ->when(! $user->seesAllAreas(), fn ($q) => $q->whereKey($user->area_id))
+            ->where(fn ($q) => $q->where('code', 'like', "%{$term}%")
+                ->orWhere('name', 'like', "%{$term}%")
+                ->orWhereHas('olts', fn ($o) => $o->where('code', 'like', "%{$term}%")))
+            ->orderBy('name')
+            ->limit(5)
+            ->get(['id', 'code', 'name', 'center_lat', 'center_lng']);
+
         return response()->json([
+            ...$pops->map(fn (Area $pop) => ['kind' => 'pop', 'id' => $pop->id, 'code' => $pop->name, 'name' => $pop->code, 'lat' => $pop->lat, 'lng' => $pop->lng]),
             ...$match(Odc::query())->map(fn (Odc $odc) => ['kind' => 'odc', ...$odc->toArray()]),
             ...$match(Odp::query())->map(fn (Odp $odp) => ['kind' => 'odp', ...$odp->toArray()]),
             ...$customers->map(fn (Customer $c) => [

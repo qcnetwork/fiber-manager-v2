@@ -9,7 +9,10 @@ namespace App\Services\Transfer;
 final class Columns
 {
     /** Columns of the ODC sheet that the importer reads. */
-    public const ODC = ['kode', 'nama', 'latitude', 'longitude', 'alamat', 'kapasitas', 'splitter', 'status', 'tanggal_pasang', 'catatan'];
+    public const ODC = [
+        'kode', 'nama', 'latitude', 'longitude', 'alamat', 'kapasitas', 'splitter', 'status', 'tanggal_pasang', 'catatan',
+        'olt', 'slot_pon', 'port_pon',
+    ];
 
     /** Columns of the ODP sheet that the importer reads. */
     public const ODP = [
@@ -30,7 +33,9 @@ final class Columns
             'tgl_pasang' => 'tanggal_pasang', 'installed_at' => 'tanggal_pasang',
             'keterangan' => 'catatan', 'notes' => 'catatan',
         ],
-        'odc' => ['kode_odc' => 'kode', 'nama_odc' => 'nama'],
+        'odc' => [
+            'kode_odc' => 'kode', 'nama_odc' => 'nama', 'kode_olt' => 'olt', 'slot' => 'slot_pon', 'kartu' => 'slot_pon', 'port' => 'port_pon',
+        ],
         'odp' => [
             'kode_odp' => 'kode', 'nama_odp' => 'nama', 'odc' => 'kode_odc', 'odc_induk' => 'kode_odc',
             'port' => 'port_odc', 'tiang' => 'no_tiang', 'nomor_tiang' => 'no_tiang', 'pole_number' => 'no_tiang',

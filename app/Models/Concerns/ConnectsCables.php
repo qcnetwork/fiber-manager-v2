@@ -12,7 +12,8 @@ trait ConnectsCables
     public static function bootConnectsCables(): void
     {
         static::updated(function ($asset) {
-            if ($asset->wasChanged(['lat', 'lng'])) {
+            // POPs (areas) keep their location in center_lat/center_lng.
+            if ($asset->wasChanged(['lat', 'lng', 'center_lat', 'center_lng'])) {
                 Cable::followEndpoint($asset);
             }
         });

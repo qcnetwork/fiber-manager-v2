@@ -10,6 +10,7 @@ const props = defineProps<{
     stats: { odcs: number; odps: number; customers: number; total_ports: number; used_ports: number; cable_m: number };
     cableByType: { type: string; count: number; length_m: number }[];
     areas: { id: number; code: string; name: string; odcs_count: number; odps_count: number; total_ports: number; used_ports: number }[] | null;
+    pops: { id: number; code: string; name: string; olts_count: number; total_ports: number; used_ports: number; broken_ports: number }[];
     almostFull: { id: number; code: string; capacity: number; used_ports: number; free_ports: number; area: { code: string } }[];
 }>();
 
@@ -106,6 +107,48 @@ const barColor = (p: number) => (p >= 90 ? 'bg-red-600' : p >= 50 ? 'bg-amber-50
                                                 />
                                             </div>
                                             <span class="w-9 text-right tabular-nums">{{ pct(area.used_ports, area.total_ports) }}%</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </CardContent>
+                </Card>
+
+                <Card v-if="pops.length">
+                    <CardHeader class="pb-2">
+                        <CardTitle class="text-base">Port PON OLT per POP</CardTitle>
+                    </CardHeader>
+                    <CardContent class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="text-left text-muted-foreground">
+                                <tr>
+                                    <th class="py-2 font-medium">POP</th>
+                                    <th class="py-2 text-right font-medium">OLT</th>
+                                    <th class="py-2 text-right font-medium">Port</th>
+                                    <th class="w-40 py-2 pl-4 font-medium">Terpakai</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y">
+                                <tr v-for="pop in pops" :key="pop.id">
+                                    <td class="py-2">
+                                        {{ pop.name }}
+                                        <span v-if="pop.broken_ports" class="text-xs text-violet-700 dark:text-violet-300">
+                                            · {{ pop.broken_ports }} rusak</span
+                                        >
+                                    </td>
+                                    <td class="py-2 text-right tabular-nums">{{ pop.olts_count }}</td>
+                                    <td class="py-2 text-right tabular-nums">{{ pop.used_ports }}/{{ pop.total_ports }}</td>
+                                    <td class="py-2 pl-4">
+                                        <div class="flex items-center gap-2">
+                                            <div class="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                                                <div
+                                                    class="h-full rounded-full"
+                                                    :class="barColor(pct(pop.used_ports, pop.total_ports))"
+                                                    :style="{ width: `${pct(pop.used_ports, pop.total_ports)}%` }"
+                                                />
+                                            </div>
+                                            <span class="w-9 text-right tabular-nums">{{ pct(pop.used_ports, pop.total_ports) }}%</span>
                                         </div>
                                     </td>
                                 </tr>

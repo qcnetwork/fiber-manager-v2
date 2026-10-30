@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\OdpPort;
+use App\Models\OltPort;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -33,6 +34,22 @@ class DashboardController extends Controller
             })
             : null;
 
+        // PON ports per POP: a port is in use when at least one ODC hangs off it.
+        $ponPorts = OltPort::query()
+            ->join('olts', 'olts.id', '=', 'olt_ports.olt_id')
+            ->whereHas('olt') // area scope of the OLT
+            ->select('olt_ports.id', 'olt_ports.status', 'olts.area_id')
+            ->withCount('odcs')
+            ->get()
+            ->groupBy('area_id');
+        $pops = Area::whereIn('id', $ponPorts->keys())->withCount('olts')->orderBy('name')->get(['id', 'code', 'name'])
+            ->map(fn (Area $pop) => [
+                ...$pop->only('id', 'code', 'name', 'olts_count'),
+                'total_ports' => $ponPorts[$pop->id]->count(),
+                'used_ports' => $ponPorts[$pop->id]->where('odcs_count', '>', 0)->count(),
+                'broken_ports' => $ponPorts[$pop->id]->where('status', 'rusak')->count(),
+            ]);
+
         $almostFull = Odp::withPortUsage()
             ->with('area:id,code')
             ->get(['id', 'area_id', 'code', 'capacity', 'lat', 'lng'])
@@ -55,6 +72,7 @@ class DashboardController extends Controller
                 ->get()
                 ->map(fn (Cable $c) => ['type' => $c->type->value, 'count' => (int) $c->count, 'length_m' => (int) $c->length_m]),
             'areas' => $areas,
+            'pops' => $pops,
             'almostFull' => $almostFull,
         ]);
     }

@@ -12,6 +12,7 @@ use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\Olt;
 use App\Services\GeoService;
+use App\Services\Legacy\OltCardImporter;
 use Illuminate\Console\Command;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Collection;
@@ -21,7 +22,8 @@ use Illuminate\Support\Facades\Storage;
 /**
  * Copies the network from the previous "fiber-manager" app into this one.
  *
- * Mapping: POP → area, OLT → olt, ODC → odc, ODP → odp, ODP port → port (+ customer),
+ * Mapping: POP → area (the area is the POP), OLT → olt, PON card → OLT ports of one slot, ODC → odc (+ its PON port),
+ * ODP → odp, ODP port → port (+ customer),
  * route coordinates of ODC / ODP / port → feeder / distribution / drop cable, users → users.
  * Everything runs in one transaction; a report and an id map (for migrating photos later) are written
  * to storage/app/migrasi-fiber-manager.
@@ -38,12 +40,14 @@ class MigrateFiberManager extends Command
     /** An old route end this close to its ODC/ODP is moved onto it; farther ends get the asset appended. */
     private const SNAP_METERS = 30;
 
-    /** A feeder route starting this close to its POP is attached to the OLT there. */
-    private const OLT_SNAP_METERS = 60;
+    /** A feeder route starting this close to its POP is attached to the POP. */
+    private const POP_SNAP_METERS = 60;
 
     private const PLACEHOLDER_TARGETS = ['', 'x', '-', '0'];
 
     private Connection $old;
+
+    private OltCardImporter $cards;
 
     /** @var list<string> */
     private array $notes = [];
@@ -102,6 +106,8 @@ class MigrateFiberManager extends Command
                 'name' => $pop->name,
                 'center_lat' => $pop->lat,
                 'center_lng' => $pop->lng,
+                'address' => $this->nullIfBlank($pop->address ?? null),
+                'notes' => $this->nullIfBlank($pop->description ?? null),
             ]);
             $this->idMap['area'][$pop->id] = $area->id;
         }
@@ -115,21 +121,24 @@ class MigrateFiberManager extends Command
 
                 continue;
             }
-            // The old app had no OLT coordinates; the OLT sits at its POP.
+            // An OLT sits at its POP; its PON ports come from the old cards below.
             $new = Olt::create([
                 'area_id' => $this->idMap['area'][$pop->id],
                 'code' => $olt->name,
                 'name' => $olt->name,
                 'brand' => $olt->model,
+                'ip_address' => $this->nullIfBlank($olt->ip_address),
                 'pon_ports' => max(1, (int) $olt->total_pon_ports),
-                'lat' => $olt->lat ?? $pop->lat,
-                'lng' => $olt->lng ?? $pop->lng,
-                'address' => $pop->name,
-                'notes' => $this->joinNotes([$olt->description, $olt->ip_address ? "IP: {$olt->ip_address}" : null]),
+                'notes' => $this->nullIfBlank($olt->description),
             ]);
             $this->idMap['olt'][$olt->id] = $new->id;
         }
         $this->counts['OLT'] = count($this->idMap['olt']);
+
+        $this->cards = new OltCardImporter($this->old);
+        $this->cards->importCards($this->idMap['olt']);
+        $this->notes = [...$this->notes, ...$this->cards->notes];
+        $this->counts['Kartu PON'] = $this->cards->cardCount;
     }
 
     // ------------------------------------------------------------------ ODC
@@ -151,8 +160,7 @@ class MigrateFiberManager extends Command
 
             $odc = new Odc([
                 'area_id' => $areaId,
-                'olt_id' => $this->idMap['olt'][$oltId] ?? null,
-                'olt_pon_port' => $old->pon_port_number,
+                'olt_port_id' => $this->cards->portId($old->pon_id, $old->pon_port_number),
                 'code' => trim($old->name),
                 'lat' => $old->lat,
                 'lng' => $old->lng,
@@ -359,9 +367,9 @@ class MigrateFiberManager extends Command
     private function migrateCables(Collection $odcs, Collection $odps): void
     {
         $made = ['feeder' => 0, 'distribusi' => 0, 'drop' => 0];
-        $olts = Olt::withoutGlobalScopes()->get()->keyBy('id');
+        $pops = Area::all()->keyBy('id');
 
-        // Feeder: POP/OLT → ODC
+        // Feeder: POP → ODC
         foreach ($this->old->table('odc')->whereNotNull('path_coordinates')->get() as $old) {
             $odc = $odcs[$old->id] ?? null;
             $path = $this->path($old->path_coordinates);
@@ -371,13 +379,13 @@ class MigrateFiberManager extends Command
             $path = $this->orientTowards($path, $odc->lat, $odc->lng);
             $path = $this->snapEnd($path, $odc->lat, $odc->lng, last: true, what: "Kabel feeder ke ODC {$odc->code}");
 
-            $olt = $odc->olt_id ? $olts[$odc->olt_id] ?? null : null;
-            $fromOlt = $olt && GeoService::distance($path[0][0], $path[0][1], $olt->lat, $olt->lng) <= self::OLT_SNAP_METERS;
-            if ($fromOlt) {
-                $path[0] = [$olt->lat, $olt->lng];
+            $pop = $pops[$odc->area_id] ?? null;
+            $fromPop = $pop?->lat !== null && GeoService::distance($path[0][0], $path[0][1], $pop->lat, $pop->lng) <= self::POP_SNAP_METERS;
+            if ($fromPop) {
+                $path[0] = [$pop->lat, $pop->lng];
             }
 
-            $this->makeCable($odc->area_id, CableType::Feeder, $path, $fromOlt ? $olt : null, $odc);
+            $this->makeCable($odc->area_id, CableType::Feeder, $path, $fromPop ? $pop : null, $odc);
             $made['feeder']++;
         }
 

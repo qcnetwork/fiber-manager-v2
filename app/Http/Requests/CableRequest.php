@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\AssetStatus;
 use App\Enums\CableType;
+use App\Models\Area;
 use Closure;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Http\FormRequest;
@@ -31,9 +32,9 @@ class CableRequest extends FormRequest
             'path.*' => ['required', 'array', 'size:2'],
             'path.*.0' => ['required', 'numeric', 'between:-90,90'],
             'path.*.1' => ['required', 'numeric', 'between:-180,180'],
-            'from_type' => ['nullable', 'required_with:from_id', Rule::in(['odc', 'odp'])],
+            'from_type' => ['nullable', 'required_with:from_id', Rule::in(['pop', 'odc', 'odp'])],
             'from_id' => ['nullable', 'integer', $this->endpointInArea('from')],
-            'to_type' => ['nullable', 'required_with:to_id', Rule::in(['odc', 'odp'])],
+            'to_type' => ['nullable', 'required_with:to_id', Rule::in(['pop', 'odc', 'odp'])],
             'to_id' => ['nullable', 'integer', $this->endpointInArea('to')],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
@@ -50,7 +51,7 @@ class CableRequest extends FormRequest
     }
 
     /**
-     * The ODC/ODP a cable end is attached to must be visible to the user and in the cable's area.
+     * The POP/ODC/ODP a cable end is attached to must be visible to the user and in the cable's area (a POP is the area itself).
      */
     private function endpointInArea(string $end): Closure
     {
@@ -59,8 +60,10 @@ class CableRequest extends FormRequest
             $asset = $class ? $class::find($value) : null;
             $areaId = $this->user()->seesAllAreas() ? (int) $this->input('area_id') : $this->user()->area_id;
 
-            if (! $asset || (int) $asset->area_id !== $areaId) {
-                $fail('Ujung kabel harus ODC/ODP di area yang sama.');
+            $assetArea = $asset instanceof Area ? $asset->id : $asset?->area_id;
+
+            if (! $asset || (int) $assetArea !== $areaId) {
+                $fail('Ujung kabel harus POP/ODC/ODP di area yang sama.');
             }
         };
     }

@@ -14,7 +14,7 @@ class OdcController extends Controller
 {
     public function show(Odc $odc): JsonResponse
     {
-        $odc->load(['area:id,code,name', 'photos.user:id,name']);
+        $odc->load(['area:id,code,name', 'oltPort:id,olt_id,slot,port,status', 'oltPort.olt:id,area_id,code,name', 'photos.user:id,name']);
         $odps = $odc->odps()->withPortUsage()->orderBy('odc_port')->get(['id', 'odc_id', 'odc_port', 'code', 'capacity', 'status']);
 
         return response()->json([

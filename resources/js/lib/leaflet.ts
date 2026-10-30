@@ -72,6 +72,27 @@ export function odcIcon(status: string, selected = false): L.DivIcon {
     });
 }
 
+const popIcons = new Map<string, L.DivIcon>();
+
+/**
+ * POP marker (see map-icons.css): a dark badge, larger than ODC/ODP since it is where the network starts.
+ */
+export function popIcon(selected = false): L.DivIcon {
+    const key = String(selected);
+    let icon = popIcons.get(key);
+    if (!icon) {
+        const size = selected ? 36 : 30;
+        icon = L.divIcon({
+            className: '',
+            html: `<div class="pop-pin${selected ? ' is-selected' : ''}">POP</div>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+        });
+        popIcons.set(key, icon);
+    }
+    return icon;
+}
+
 export function cableStyle(cable: { type: string; status: string }, selected = false): L.PolylineOptions {
     const type = cableTypes[cable.type] ?? cableTypes.distribusi;
     return {

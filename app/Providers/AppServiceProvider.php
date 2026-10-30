@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Area;
 use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
@@ -26,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Short names stored in cables.from_type / to_type and sent to the map.
         Relation::morphMap([
+            'pop' => Area::class, // an area is its POP
             'olt' => Olt::class,
             'odc' => Odc::class,
             'odp' => Odp::class,

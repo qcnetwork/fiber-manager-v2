@@ -19,6 +19,7 @@ const emit = defineEmits<{
     refresh: [];
     addOdp: [];
     selectOdp: [id: number];
+    selectPop: [id: number];
 }>();
 
 const odc = computed(() => props.detail.odc);
@@ -45,6 +46,19 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
         </div>
 
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt class="text-muted-foreground">Sumber</dt>
+            <dd>
+                <template v-if="odc.olt_port?.olt">
+                    <button class="font-medium text-blue-600 hover:underline dark:text-blue-400" @click="emit('selectPop', odc.olt_port.olt.area_id)">
+                        {{ odc.area?.name ?? 'POP' }}
+                    </button>
+                    › {{ odc.olt_port.olt.code }} › slot {{ odc.olt_port.slot }} / port {{ odc.olt_port.port }}
+                    <span v-if="odc.olt_port.status === 'rusak'" class="text-xs font-semibold text-violet-700 dark:text-violet-300"
+                        >(port rusak)</span
+                    >
+                </template>
+                <span v-else class="text-muted-foreground">Belum tersambung ke OLT</span>
+            </dd>
             <dt class="text-muted-foreground">Splitter</dt>
             <dd>{{ odc.splitter_ratio ?? '—' }}</dd>
             <dt class="text-muted-foreground">Alamat</dt>

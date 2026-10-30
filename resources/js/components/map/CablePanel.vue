@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import StatusBadge from '@/components/map/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
-import { cableTypes, formatLength } from '@/lib/cables';
-import type { AssetKind, Cable } from '@/types';
+import { cableTypes, endLabel, formatLength } from '@/lib/cables';
+import type { Cable, CableEndKind } from '@/types';
 import { Pencil, Trash2, X } from 'lucide-vue-next';
 import { computed } from 'vue';
 
@@ -16,7 +16,7 @@ const emit = defineEmits<{
     edit: [];
     delete: [];
     close: [];
-    selectAsset: [kind: AssetKind, id: number];
+    selectAsset: [kind: CableEndKind, id: number];
 }>();
 
 const type = computed(() => cableTypes[props.cable.type]);
@@ -64,7 +64,7 @@ const ends = computed(() => [
                         class="font-medium text-blue-600 hover:underline dark:text-blue-400"
                         @click="emit('selectAsset', end.kind, end.asset.id)"
                     >
-                        {{ end.kind.toUpperCase() }} {{ end.asset.code }}
+                        {{ endLabel(end.kind, end.asset.code) }}
                     </button>
                     <span v-else class="text-muted-foreground">Titik bebas</span>
                 </dd>

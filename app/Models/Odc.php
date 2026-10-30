@@ -18,7 +18,7 @@ class Odc extends Model
     use BelongsToArea, ConnectsCables, HasFactory, HasPhotos;
 
     protected $fillable = [
-        'area_id', 'olt_id', 'olt_pon_port', 'code', 'name', 'lat', 'lng', 'address',
+        'area_id', 'olt_port_id', 'code', 'name', 'lat', 'lng', 'address',
         'capacity', 'splitter_ratio', 'status', 'installed_at', 'notes',
     ];
 
@@ -37,9 +37,12 @@ class Odc extends Model
         ];
     }
 
-    public function olt(): BelongsTo
+    /**
+     * The OLT PON port this ODC is fed from.
+     */
+    public function oltPort(): BelongsTo
     {
-        return $this->belongsTo(Olt::class);
+        return $this->belongsTo(OltPort::class);
     }
 
     public function odps(): HasMany

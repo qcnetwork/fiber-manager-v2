@@ -70,6 +70,14 @@ class User extends Authenticatable
         return $this->area_id === null;
     }
 
+    /**
+     * Areas (POPs) have no area scope of their own; this is the check for them.
+     */
+    public function canAccessArea(int $areaId): bool
+    {
+        return $this->seesAllAreas() || $this->area_id === $areaId;
+    }
+
     public function isSuperAdmin(): bool
     {
         return $this->role === Role::SuperAdmin;
