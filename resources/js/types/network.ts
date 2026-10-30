@@ -92,6 +92,25 @@ export interface Customer {
     package: string | null;
     ont_sn: string | null;
     status: string;
+    area_id?: number;
+    area?: Pick<Area, 'id' | 'code' | 'name'>;
+    photos?: Photo[];
+    /** The port the customer is connected to, with its ODP (customer detail only). */
+    port?: {
+        id: number;
+        odp_id: number;
+        number: number;
+        odp: { id: number; code: string; name: string | null; lat: number; lng: number } | null;
+    } | null;
+}
+
+export interface CustomerMarker {
+    id: number;
+    name: string;
+    customer_code: string | null;
+    lat: number;
+    lng: number;
+    odp_latlng: [number, number] | null;
 }
 
 export interface OdpPort {
@@ -126,7 +145,9 @@ export interface NearestOdp {
 }
 
 export type AssetKind = 'odc' | 'odp';
-export type MapItemKind = AssetKind | 'cable';
+export type MapItemKind = AssetKind | 'cable' | 'customer';
+/** What a photo can belong to. */
+export type PhotoOwner = AssetKind | 'customer';
 
 export type CableType = 'feeder' | 'distribusi' | 'drop';
 export type LatLng = [number, number];

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import L, { baseLayers, cableStyle, cableTypes, formatLength, odcIcon, odpColor, odpIcon, pickIcon, vertexIcon } from '@/lib/leaflet';
-import type { CableLine, LatLng, MapItemKind, OdcMarker, OdpMarker } from '@/types';
+import type { CableLine, CustomerMarker, LatLng, MapItemKind, OdcMarker, OdpMarker } from '@/types';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
@@ -16,6 +16,10 @@ const props = defineProps<{
     zoom: number;
     /** Start with the cable layer unticked; it can still be switched on from the layer menu. */
     hideCables?: boolean;
+    /** Customers in view; only fetched while the "Pelanggan" layer is switched on. */
+    customers?: CustomerMarker[];
+    /** The customer open in the panel, shown even while the customer layer is off. */
+    customerFocus?: { lat: number; lng: number; odp_latlng: [number, number] | null } | null;
 }>();
 
 const emit = defineEmits<{
@@ -25,6 +29,7 @@ const emit = defineEmits<{
     pickMove: [lat: number, lng: number];
     draftMove: [index: number, lat: number, lng: number];
     draftRemove: [index: number];
+    customersToggle: [visible: boolean];
 }>();
 
 const el = ref<HTMLDivElement>();
@@ -40,6 +45,10 @@ const cableRenderer = L.canvas({ tolerance: 8 });
 const draftLayer = L.layerGroup();
 const pickLayer = L.layerGroup();
 const nearestLayer = L.layerGroup();
+// Customers can number in the thousands: drawn on canvas, and the layer starts switched off.
+const customerLayer = L.layerGroup();
+const customerRenderer = L.canvas({ tolerance: 6 });
+const customerFocusLayer = L.layerGroup();
 let myLocation: L.CircleMarker | null = null;
 
 const isSelected = (kind: MapItemKind, id: number) => props.selected?.kind === kind && props.selected.id === id;
@@ -95,6 +104,54 @@ function renderCables() {
         if (selected) line.bringToFront();
     }
 }
+
+const CUSTOMER_COLOR = '#0d9488';
+
+function renderCustomers() {
+    customerLayer.clearLayers();
+
+    for (const c of props.customers ?? []) {
+        if (c.odp_latlng) {
+            L.polyline([c.odp_latlng, [c.lat, c.lng]], {
+                color: '#64748b',
+                weight: 1,
+                opacity: 0.6,
+                interactive: false,
+                renderer: customerRenderer,
+            }).addTo(customerLayer);
+        }
+        L.circleMarker([c.lat, c.lng], {
+            radius: 5,
+            color: '#fff',
+            weight: 1.5,
+            fillColor: CUSTOMER_COLOR,
+            fillOpacity: 1,
+            renderer: customerRenderer,
+            bubblingMouseEvents: false,
+        })
+            .bindTooltip(`<b>${escapeHtml(c.name)}</b>${c.customer_code ? '<br>' + escapeHtml(c.customer_code) : ''}`, { direction: 'top' })
+            .on('click', () => emit('select', 'customer', c.id))
+            .addTo(customerLayer);
+    }
+}
+
+function renderCustomerFocus() {
+    customerFocusLayer.clearLayers();
+    const c = props.customerFocus;
+    if (!c) return;
+
+    if (c.odp_latlng) {
+        L.polyline([c.odp_latlng, [c.lat, c.lng]], { color: CUSTOMER_COLOR, weight: 3, dashArray: '6 4', interactive: false }).addTo(
+            customerFocusLayer,
+        );
+    }
+    L.circleMarker([c.lat, c.lng], { radius: 9, color: '#fff', weight: 3, fillColor: CUSTOMER_COLOR, fillOpacity: 1, interactive: false }).addTo(
+        customerFocusLayer,
+    );
+}
+
+// Customer names are typed by people, unlike asset codes.
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 function renderDraft() {
     draftLayer.clearLayers();
@@ -174,11 +231,16 @@ onMounted(() => {
     const layers = baseLayers();
     layers.Peta.addTo(map);
     // The straight ODC–ODP guide lines start hidden now that real cable routes are drawn; they stay available in the layer menu.
-    [cableLayer, odcLayer, odpLayer, draftLayer, pickLayer, nearestLayer]
+    [cableLayer, odcLayer, odpLayer, customerFocusLayer, draftLayer, pickLayer, nearestLayer]
         .filter((layer) => !(props.hideCables && layer === cableLayer))
         .forEach((layer) => layer.addTo(map));
 
-    L.control.layers(layers, { Kabel: cableLayer, ODC: odcLayer, ODP: odpLayer, 'Garis ODC–ODP': linkLayer }, { position: 'topright' }).addTo(map);
+    const overlays: Record<string, L.Layer> = { Kabel: cableLayer, ODC: odcLayer, ODP: odpLayer, 'Garis ODC–ODP': linkLayer };
+    // Only pages that pass customers offer the layer (never the sales coverage page).
+    if (props.customers) overlays.Pelanggan = customerLayer;
+    L.control.layers(layers, overlays, { position: 'topright' }).addTo(map);
+    map.on('overlayadd', (e) => e.layer === customerLayer && emit('customersToggle', true));
+    map.on('overlayremove', (e) => e.layer === customerLayer && emit('customersToggle', false));
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
 
     map.on('moveend', emitBounds);
@@ -207,6 +269,8 @@ watch([() => props.cables, () => props.selected], renderCables);
 watch(() => props.draft, renderDraft, { deep: true });
 watch(() => props.pick, renderPick, { deep: true });
 watch(() => props.nearest, renderNearest);
+watch(() => props.customers, renderCustomers);
+watch(() => props.customerFocus, renderCustomerFocus);
 
 defineExpose({
     flyTo(lat: number, lng: number, zoom?: number) {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Area;
 use App\Models\Cable;
+use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Services\CoverageService;
@@ -87,7 +88,7 @@ class MapController extends Controller
     }
 
     /**
-     * ODC/ODP whose code or name matches, for jumping to them on the map.
+     * ODC/ODP whose code or name matches, and customers by name, ID or phone, for jumping to them on the map.
      */
     public function search(Request $request): JsonResponse
     {
@@ -102,9 +103,28 @@ class MapController extends Controller
             ->limit(10)
             ->get(['id', 'code', 'name', 'lat', 'lng']);
 
+        // Sales can search the network but never customers.
+        $customers = $request->user()->isSales() ? collect() : Customer::query()
+            ->where(fn ($q) => $q->where('name', 'like', "%{$term}%")
+                ->orWhere('customer_code', 'like', "%{$term}%")
+                ->orWhere('phone', 'like', "%{$term}%"))
+            ->with('port.odp:id,code,lat,lng')
+            ->orderBy('name')
+            ->limit(10)
+            ->get(['id', 'name', 'customer_code', 'lat', 'lng']);
+
         return response()->json([
             ...$match(Odc::query())->map(fn (Odc $odc) => ['kind' => 'odc', ...$odc->toArray()]),
             ...$match(Odp::query())->map(fn (Odp $odp) => ['kind' => 'odp', ...$odp->toArray()]),
+            ...$customers->map(fn (Customer $c) => [
+                'kind' => 'customer',
+                'id' => $c->id,
+                'code' => $c->name,
+                'name' => collect([$c->customer_code, $c->port?->odp ? "{$c->port->odp->code} port {$c->port->number}" : null])->filter()->implode(' · ') ?: null,
+                // Customers without a location are found at their ODP.
+                'lat' => $c->lat ?? $c->port?->odp?->lat,
+                'lng' => $c->lng ?? $c->port?->odp?->lng,
+            ]),
         ]);
     }
 

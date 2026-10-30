@@ -9,6 +9,7 @@ Dibangun dengan Laravel 12, Inertia + Vue 3 (TypeScript), Tailwind, dan Leaflet/
 - **Peta jaringan** — ODC, ODP (warna sesuai okupansi port), jalur kabel feeder/distribusi/drop, peta satelit, pencarian kode, lokasi saya.
 - **ODC & ODP** — tambah/edit dari peta atau GPS HP, ODC induk + port ODC, kapasitas & splitter, status aktif/rencana/rusak.
 - **Port & pelanggan** — grid port per ODP, isi data pelanggan (ID/PPPoE, HP, paket, SN ONT).
+- **Pelanggan** — koordinat rumah (klik peta, GPS, atau tempel link Google Maps), cari pelanggan berdasarkan nama/ID/no. HP, pindah ke ODP/port lain, dan foto. Layer *Pelanggan* di peta mati secara default dan baru dimuat saat diperbesar (zoom ≥ 15) supaya peta tetap ringan.
 - **Jalur kabel** — gambar di peta, ujung menempel otomatis ke ODC/ODP, panjang dihitung otomatis, ikut berpindah bila ODC/ODP dipindah.
 - **Foto** — galeri foto per ODC/ODP; foto dikecilkan di browser sebelum diunggah.
 - **Link Google Maps → koordinat** — tempel link Google Maps (termasuk link pendek `maps.app.goo.gl`) di Cek Coverage, kotak cari peta, atau panel *Terdekat*; lokasi dari link selalu diberi peringatan agar dicek, karena koordinat langsung lebih akurat. Link pendek dibuka oleh server, jadi server perlu akses internet.

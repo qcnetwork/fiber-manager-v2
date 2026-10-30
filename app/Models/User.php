@@ -76,6 +76,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Sales accounts only check coverage and never see customer data.
+     */
+    public function isSales(): bool
+    {
+        return $this->role === Role::Sales;
+    }
+
+    /**
      * Whether the user may add and edit network data (ODC, ODP, ports, customers).
      */
     public function canEditNetwork(): bool

@@ -19,6 +19,7 @@ const emit = defineEmits<{
     refresh: [];
     openPort: [port: OdpPort];
     selectOdc: [id: number];
+    openCustomer: [id: number];
 }>();
 
 const portStyles: Record<PortStatus, string> = {
@@ -110,14 +111,21 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
         <div v-if="ports.some((p) => p.customer)">
             <h3 class="mb-2 text-sm font-semibold">Pelanggan</h3>
             <ul class="divide-y rounded-md border text-sm">
-                <li v-for="port in ports.filter((p) => p.customer)" :key="port.id" class="flex items-center gap-3 px-3 py-2">
-                    <span class="w-6 text-center font-mono text-xs text-muted-foreground">{{ port.number }}</span>
-                    <div class="min-w-0 flex-1">
-                        <div class="truncate font-medium">{{ port.customer!.name }}</div>
-                        <div class="truncate text-xs text-muted-foreground">
-                            {{ [port.customer!.customer_code, port.customer!.phone, port.customer!.package].filter(Boolean).join(' · ') || '—' }}
+                <li v-for="port in ports.filter((p) => p.customer)" :key="port.id">
+                    <button
+                        type="button"
+                        class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted"
+                        title="Buka data pelanggan"
+                        @click="emit('openCustomer', port.customer!.id)"
+                    >
+                        <span class="w-6 text-center font-mono text-xs text-muted-foreground">{{ port.number }}</span>
+                        <div class="min-w-0 flex-1">
+                            <div class="truncate font-medium">{{ port.customer!.name }}</div>
+                            <div class="truncate text-xs text-muted-foreground">
+                                {{ [port.customer!.customer_code, port.customer!.phone, port.customer!.package].filter(Boolean).join(' · ') || '—' }}
+                            </div>
                         </div>
-                    </div>
+                    </button>
                 </li>
             </ul>
         </div>

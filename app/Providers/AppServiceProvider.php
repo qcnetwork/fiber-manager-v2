@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\Olt;
@@ -28,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
             'olt' => Olt::class,
             'odc' => Odc::class,
             'odp' => Odp::class,
+            'customer' => Customer::class,
         ]);
     }
 }

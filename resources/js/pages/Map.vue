@@ -3,6 +3,9 @@ import NativeSelect from '@/components/NativeSelect.vue';
 import AssetForm from '@/components/map/AssetForm.vue';
 import CableForm from '@/components/map/CableForm.vue';
 import CablePanel from '@/components/map/CablePanel.vue';
+import CustomerForm from '@/components/map/CustomerForm.vue';
+import CustomerPanel from '@/components/map/CustomerPanel.vue';
+import MoveCustomerDialog from '@/components/map/MoveCustomerDialog.vue';
 import NearestPanel from '@/components/map/NearestPanel.vue';
 import NetworkMap from '@/components/map/NetworkMap.vue';
 import OdcPanel from '@/components/map/OdcPanel.vue';
@@ -21,6 +24,8 @@ import type {
     Cable,
     CableEndpoint,
     CableLine,
+    Customer,
+    CustomerMarker,
     LatLng,
     MapItemKind,
     NearestOdp,
@@ -85,25 +90,52 @@ async function loadFeatures(bbox = lastBbox) {
 }
 watch(filters, () => loadFeatures(), { deep: true });
 
+// ---- Customers: off by default and only fetched when zoomed in, since there can be thousands.
+const CUSTOMER_MIN_ZOOM = 15;
+const showCustomers = ref(false);
+const customers = ref<CustomerMarker[]>([]);
+const customersTruncated = ref(false);
+const zoom = ref(view.zoom);
+let customerRequest = 0;
+
+async function loadCustomers() {
+    const requestId = ++customerRequest;
+    if (!showCustomers.value || zoom.value < CUSTOMER_MIN_ZOOM || !lastBbox) {
+        customers.value = [];
+        return;
+    }
+    const data = await getJson<{ customers: CustomerMarker[]; truncated: boolean }>(route('map.customers'), {
+        bbox: lastBbox,
+        area_id: filters.value.area_id,
+    });
+    if (requestId !== customerRequest) return;
+    customers.value = data.customers;
+    customersTruncated.value = data.truncated;
+}
+watch([showCustomers, () => filters.value.area_id], loadCustomers);
+
 const mapCenter = ref<[number, number]>(view.center);
 
-function onBounds(bbox: string, center: [number, number], zoom: number) {
+function onBounds(bbox: string, center: [number, number], newZoom: number) {
     loadFeatures(bbox);
+    zoom.value = newZoom;
+    loadCustomers();
     mapCenter.value = center;
     try {
-        localStorage.setItem(VIEW_KEY, JSON.stringify({ center, zoom }));
+        localStorage.setItem(VIEW_KEY, JSON.stringify({ center, zoom: newZoom }));
     } catch {
         // storage unavailable
     }
 }
 
 // ---- Side panel state
-type Mode = 'idle' | 'detail' | 'form' | 'nearest' | 'cable';
+type Mode = 'idle' | 'detail' | 'form' | 'nearest' | 'cable' | 'customer-form';
 const mode = ref<Mode>('idle');
 const selected = ref<{ kind: MapItemKind; id: number } | null>(null);
 const odpDetail = ref<Odp | null>(null);
 const odcDetail = ref<OdcDetail | null>(null);
 const cableDetail = ref<Cable | null>(null);
+const customerDetail = ref<Customer | null>(null);
 const loadingDetail = ref(false);
 
 async function select(kind: MapItemKind, id: number, fly = false) {
@@ -111,6 +143,17 @@ async function select(kind: MapItemKind, id: number, fly = false) {
     selected.value = { kind, id };
     loadingDetail.value = true;
     try {
+        if (kind === 'customer') {
+            odpDetail.value = null;
+            odcDetail.value = null;
+            cableDetail.value = null;
+            const customer = (await getJson<{ customer: Customer }>(route('customers.show', { customer: id }))).customer;
+            customerDetail.value = customer;
+            const at = customer.lat !== null && customer.lng !== null ? customer : customer.port?.odp;
+            if (fly && at) mapRef.value?.flyTo(at.lat!, at.lng!);
+            return;
+        }
+        customerDetail.value = null;
         if (kind === 'cable') {
             odpDetail.value = null;
             odcDetail.value = null;
@@ -138,9 +181,42 @@ function closePanel() {
     odpDetail.value = null;
     odcDetail.value = null;
     cableDetail.value = null;
+    customerDetail.value = null;
     pick.value = null;
     nearest.value = null;
     draft.value = null;
+}
+
+// ---- Customers: edit (incl. location) and move to another port
+const movingCustomer = ref<Customer | null>(null);
+
+/** Selected customer highlighted on the map, also while the customer layer is off. */
+const customerFocus = computed(() => {
+    const c = customerDetail.value;
+    if (!c || c.lat === null || c.lng === null) return null;
+    const odp = c.port?.odp;
+    return { lat: c.lat, lng: c.lng, odp_latlng: odp ? ([odp.lat, odp.lng] as [number, number]) : null };
+});
+
+function startCustomerEdit() {
+    const c = customerDetail.value;
+    if (!c) return;
+    pick.value = c.lat !== null && c.lng !== null ? { lat: c.lat, lng: c.lng } : null;
+    formKey.value++;
+    mode.value = 'customer-form';
+}
+
+function afterCustomerChange() {
+    const c = customerDetail.value;
+    pick.value = null;
+    loadFeatures(); // port usage of the ODPs changed
+    loadCustomers();
+    if (c) select('customer', c.id);
+}
+
+function onCustomerMoved() {
+    movingCustomer.value = null;
+    afterCustomerChange();
 }
 
 // ---- Create / edit
@@ -192,7 +268,8 @@ function locate(lat: number, lng: number) {
 }
 
 function destroy() {
-    if (!selected.value) return;
+    // Customers are released from their port in the port dialog, not deleted here.
+    if (!selected.value || selected.value.kind === 'customer') return;
     const { kind, id } = selected.value;
     const label = {
         odp: `ODP ${odpDetail.value?.code}?\nSemua data port ODP ini ikut terhapus.`,
@@ -364,15 +441,18 @@ function onCableCancel() {
 }
 
 function onMapSelect(kind: MapItemKind, id: number) {
-    if (mode.value === 'cable' && kind !== 'cable') attachCableEnd(kind, id);
-    else select(kind, id);
+    if (mode.value === 'cable') {
+        if (kind === 'odc' || kind === 'odp') attachCableEnd(kind, id);
+    } else if (mode.value !== 'customer-form') {
+        select(kind, id);
+    }
 }
 
 // ---- Map clicks depend on what the panel is doing
 function onMapClick(lat: number, lng: number) {
     if (mode.value === 'cable') {
         addCablePoint(lat, lng);
-    } else if (mode.value === 'form') {
+    } else if (mode.value === 'form' || mode.value === 'customer-form') {
         pick.value = { lat, lng };
     } else if (mode.value === 'nearest') {
         nearestAt(lat, lng);
@@ -383,7 +463,10 @@ function onMapClick(lat: number, lng: number) {
 
 // ---- Toolbar: search & my location
 const query = ref('');
-const searchResults = ref<{ kind: AssetKind; id: number; code: string; name: string | null; lat: number; lng: number }[]>([]);
+const searchResults = ref<{ kind: AssetKind | 'customer'; id: number; code: string; name: string | null; lat: number | null; lng: number | null }[]>(
+    [],
+);
+const kindLabels = { odc: 'ODC', odp: 'ODP', customer: 'PLG' };
 // Pasted coordinates or a Google Maps link are a location, not a code to look up.
 const queryIsLocation = computed(() => !!parseCoordinates(query.value) || isUrl(query.value));
 const runSearch = useDebounceFn(async () => {
@@ -399,7 +482,7 @@ function nearestFromQuery() {
     nearestFromText(text);
 }
 
-function pickSearchResult(r: { kind: AssetKind; id: number }) {
+function pickSearchResult(r: { kind: AssetKind | 'customer'; id: number }) {
     query.value = '';
     searchResults.value = [];
     select(r.kind, r.id, true);
@@ -438,11 +521,14 @@ const panelOpen = computed(() => mode.value !== 'idle');
                         :cables="cables"
                         :draft="mode === 'cable' ? draft : null"
                         :selected="selected"
-                        :pick="mode === 'form' ? pick : null"
+                        :pick="mode === 'form' || mode === 'customer-form' ? pick : null"
                         :nearest="mode === 'nearest' ? nearest : null"
+                        :customers="customers"
+                        :customer-focus="mode === 'detail' ? customerFocus : null"
                         :center="view.center"
                         :zoom="view.zoom"
                         @bounds="onBounds"
+                        @customers-toggle="(on) => (showCustomers = on)"
                         @select="onMapSelect"
                         @click="onMapClick"
                         @pick-move="(lat, lng) => (pick = { lat, lng })"
@@ -456,7 +542,7 @@ const panelOpen = computed(() => mode.value !== 'idle');
                             <Search class="absolute left-2.5 top-3 size-4 text-muted-foreground" />
                             <Input
                                 v-model="query"
-                                placeholder="Kode ODC/ODP, koordinat, atau link Maps…"
+                                placeholder="ODC/ODP, pelanggan, koordinat, link Maps…"
                                 class="h-10 bg-background pl-8 shadow"
                                 @keydown.enter="queryIsLocation && nearestFromQuery()"
                             />
@@ -482,8 +568,17 @@ const panelOpen = computed(() => mode.value !== 'idle');
                                         class="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted"
                                         @click="pickSearchResult(r)"
                                     >
-                                        <span class="rounded bg-muted px-1.5 text-[10px] font-bold uppercase">{{ r.kind }}</span>
-                                        <span class="truncate">{{ r.code }}</span>
+                                        <span
+                                            class="rounded px-1.5 text-[10px] font-bold uppercase"
+                                            :class="r.kind === 'customer' ? 'bg-teal-600 text-white' : 'bg-muted'"
+                                            >{{ kindLabels[r.kind] }}</span
+                                        >
+                                        <span class="min-w-0 flex-1">
+                                            <span class="block truncate">{{ r.code }}</span>
+                                            <span v-if="r.kind === 'customer' && r.name" class="block truncate text-xs text-muted-foreground">{{
+                                                r.name
+                                            }}</span>
+                                        </span>
                                     </button>
                                 </li>
                             </ul>
@@ -542,6 +637,16 @@ const panelOpen = computed(() => mode.value !== 'idle');
                     >
                         Terlalu banyak titik di layar — perbesar peta untuk melihat semuanya.
                     </div>
+                    <div
+                        v-else-if="showCustomers && (zoom < CUSTOMER_MIN_ZOOM || customersTruncated)"
+                        class="absolute bottom-6 left-1/2 z-10 -translate-x-1/2 rounded-md bg-teal-50 px-3 py-1 text-xs text-teal-900 shadow"
+                    >
+                        {{
+                            zoom < CUSTOMER_MIN_ZOOM
+                                ? 'Perbesar peta untuk menampilkan pelanggan.'
+                                : 'Terlalu banyak pelanggan di layar — sebagian tidak ditampilkan, perbesar peta.'
+                        }}
+                    </div>
                 </div>
 
                 <!-- Panel: bottom sheet on phones, right column on desktop -->
@@ -550,7 +655,7 @@ const panelOpen = computed(() => mode.value !== 'idle');
                     class="absolute inset-x-0 bottom-0 z-20 max-h-[65%] overflow-y-auto rounded-t-xl border-t bg-background p-4 shadow-2xl md:static md:max-h-none md:w-96 md:rounded-none md:border-l md:border-t-0 md:shadow-none"
                 >
                     <div
-                        v-if="mode === 'detail' && loadingDetail && !odpDetail && !odcDetail && !cableDetail"
+                        v-if="mode === 'detail' && loadingDetail && !odpDetail && !odcDetail && !cableDetail && !customerDetail"
                         class="flex items-center gap-2 text-sm text-muted-foreground"
                     >
                         <LoaderCircle class="size-4 animate-spin" /> Memuat…
@@ -567,6 +672,30 @@ const panelOpen = computed(() => mode.value !== 'idle');
                         @open-port="(port) => (activePort = port)"
                         @refresh="refreshSelected"
                         @select-odc="(id) => select('odc', id, true)"
+                        @open-customer="(id) => select('customer', id, true)"
+                    />
+
+                    <CustomerPanel
+                        v-else-if="mode === 'detail' && customerDetail"
+                        :customer="customerDetail"
+                        :can-edit="can.edit"
+                        :can-delete="can.delete"
+                        @close="closePanel"
+                        @edit="startCustomerEdit"
+                        @move="movingCustomer = customerDetail"
+                        @refresh="refreshSelected"
+                        @select-odp="(id) => select('odp', id, true)"
+                    />
+
+                    <CustomerForm
+                        v-else-if="mode === 'customer-form' && customerDetail"
+                        :key="formKey"
+                        :customer="customerDetail"
+                        :location="pick"
+                        @locate="locate"
+                        @clear-location="pick = null"
+                        @saved="afterCustomerChange"
+                        @cancel="afterCustomerChange"
                     />
 
                     <OdcPanel
@@ -642,5 +771,6 @@ const panelOpen = computed(() => mode.value !== 'idle');
         </div>
 
         <PortDialog :port="activePort" :odp-code="odpDetail?.code ?? ''" @saved="onPortSaved" @close="activePort = null" />
+        <MoveCustomerDialog :customer="movingCustomer" @moved="onCustomerMoved" @close="movingCustomer = null" />
     </AppLayout>
 </template>

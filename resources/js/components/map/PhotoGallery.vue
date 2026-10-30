@@ -3,13 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { compressImage } from '@/lib/image';
-import type { AssetKind, Photo, SharedData } from '@/types';
+import type { Photo, PhotoOwner, SharedData } from '@/types';
 import { router, usePage } from '@inertiajs/vue3';
 import { Camera, ChevronLeft, ChevronRight, LoaderCircle, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 const props = defineProps<{
-    ownerType: AssetKind;
+    ownerType: PhotoOwner;
     ownerId: number;
     photos: Photo[];
     canEdit: boolean;
