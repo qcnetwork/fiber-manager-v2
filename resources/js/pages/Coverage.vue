@@ -6,8 +6,8 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { formatLength } from '@/lib/cables';
 import { geocode, precisionWarning, resolveLocation, type GeocodeResult, type LocationPrecision } from '@/lib/coordinates';
 import { currentPosition, getJson } from '@/lib/http';
-import type { Area, BreadcrumbItem, CableLine, OdcMarker, OdpMarker } from '@/types';
-import { Head } from '@inertiajs/vue3';
+import type { Area, BreadcrumbItem, CableLine, OdcMarker, OdpMarker, SharedData } from '@/types';
+import { Head, usePage } from '@inertiajs/vue3';
 import { CircleAlert, CircleCheck, CircleX, Copy, Crosshair, ExternalLink, LoaderCircle, MapPin, Search, TriangleAlert } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
@@ -39,6 +39,8 @@ const props = defineProps<{
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Cek Coverage', href: '/coverage' }];
 const mapRef = ref<InstanceType<typeof NetworkMap>>();
+// Sales only needs ODC/ODP to judge coverage; cable routes start hidden.
+const isSales = usePage<SharedData>().props.auth.user.role === 'sales';
 
 // ---- Map: start where the user last looked, else their area
 const VIEW_KEY = 'odp-coverage-view';
@@ -357,6 +359,7 @@ async function copyResult() {
                         :nearest="mapOverlay"
                         :center="view.center"
                         :zoom="view.zoom"
+                        :hide-cables="isSales"
                         @bounds="onBounds"
                         @click="onMapClick"
                         @select="() => {}"

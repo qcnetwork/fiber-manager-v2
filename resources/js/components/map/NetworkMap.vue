@@ -14,6 +14,8 @@ const props = defineProps<{
     nearest: { lat: number; lng: number; radius: number; results: { lat: number; lng: number }[] } | null;
     center: [number, number];
     zoom: number;
+    /** Start with the cable layer unticked; it can still be switched on from the layer menu. */
+    hideCables?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -172,7 +174,9 @@ onMounted(() => {
     const layers = baseLayers();
     layers.Peta.addTo(map);
     // The straight ODC–ODP guide lines start hidden now that real cable routes are drawn; they stay available in the layer menu.
-    [cableLayer, odcLayer, odpLayer, draftLayer, pickLayer, nearestLayer].forEach((layer) => layer.addTo(map));
+    [cableLayer, odcLayer, odpLayer, draftLayer, pickLayer, nearestLayer]
+        .filter((layer) => !(props.hideCables && layer === cableLayer))
+        .forEach((layer) => layer.addTo(map));
 
     L.control.layers(layers, { Kabel: cableLayer, ODC: odcLayer, ODP: odpLayer, 'Garis ODC–ODP': linkLayer }, { position: 'topright' }).addTo(map);
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
