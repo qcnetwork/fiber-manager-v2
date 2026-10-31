@@ -215,6 +215,7 @@ const nearLimit = computed(() => {
 });
 
 const mapsUrl = computed(() => (point.value ? `https://www.google.com/maps?q=${point.value.lat},${point.value.lng}` : ''));
+const odpMapsUrl = (odp: CoverageOdp) => `https://www.google.com/maps?q=${odp.lat},${odp.lng}`;
 
 const copied = ref(false);
 async function copyResult() {
@@ -360,6 +361,18 @@ async function copyResult() {
                                         <div class="text-xs text-muted-foreground">{{ odp.free_ports }} port kosong dari {{ odp.capacity }}</div>
                                     </div>
                                     <span class="font-semibold tabular-nums">{{ odp.distance }} m</span>
+                                    <Button
+                                        as="a"
+                                        :href="odpMapsUrl(odp)"
+                                        target="_blank"
+                                        variant="outline"
+                                        size="icon"
+                                        class="size-8 shrink-0"
+                                        :title="`Buka ${odp.code} di Google Maps`"
+                                    >
+                                        <ExternalLink class="size-4" />
+                                        <span class="sr-only">Google Maps</span>
+                                    </Button>
                                 </li>
                             </ul>
                             <p v-if="nearLimit" class="mt-1 text-xs text-amber-700 dark:text-amber-300">
@@ -370,9 +383,21 @@ async function copyResult() {
                         <div v-if="result.full.length && !result.available.length">
                             <h2 class="mb-1 text-sm font-semibold">ODP terdekat (penuh)</h2>
                             <ul class="divide-y rounded-md border text-sm">
-                                <li v-for="odp in result.full" :key="odp.id" class="flex items-center justify-between px-3 py-2">
-                                    <span class="truncate font-medium">{{ odp.code }}</span>
+                                <li v-for="odp in result.full" :key="odp.id" class="flex items-center gap-3 px-3 py-2">
+                                    <span class="min-w-0 flex-1 truncate font-medium">{{ odp.code }}</span>
                                     <span class="tabular-nums">{{ odp.distance }} m · {{ odp.used_ports }}/{{ odp.capacity }}</span>
+                                    <Button
+                                        as="a"
+                                        :href="odpMapsUrl(odp)"
+                                        target="_blank"
+                                        variant="outline"
+                                        size="icon"
+                                        class="size-8 shrink-0"
+                                        :title="`Buka ${odp.code} di Google Maps`"
+                                    >
+                                        <ExternalLink class="size-4" />
+                                        <span class="sr-only">Google Maps</span>
+                                    </Button>
                                 </li>
                             </ul>
                         </div>
