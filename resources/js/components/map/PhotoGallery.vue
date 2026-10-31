@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { compressImage } from '@/lib/image';
 import type { Photo, PhotoOwner, SharedData } from '@/types';
 import { router, usePage } from '@inertiajs/vue3';
-import { Camera, ChevronLeft, ChevronRight, LoaderCircle, Trash2 } from '@lucide/vue';
+import { Camera, ChevronLeft, ChevronRight, ClipboardPaste, LoaderCircle, Trash2 } from '@lucide/vue';
+import { useEventListener } from '@vueuse/core';
 import { computed, ref } from 'vue';
 
 const props = defineProps<{
@@ -45,8 +46,45 @@ function postPhoto(file: File): Promise<void> {
     });
 }
 
-async function onFilesChosen(event: Event) {
-    const files = Array.from((event.target as HTMLInputElement).files ?? []);
+function onFilesChosen(event: Event) {
+    uploadFiles(Array.from((event.target as HTMLInputElement).files ?? []));
+}
+
+// ---- Paste: Ctrl+V anywhere while this gallery is shown, or the "Tempel" button (phones have no Ctrl+V)
+const imagesIn = (files: File[]) => files.filter((f) => f.type.startsWith('image/'));
+
+useEventListener(document, 'paste', (event: ClipboardEvent) => {
+    if (!props.canEdit || uploading.value || viewing.value !== null) return;
+    const data = event.clipboardData;
+    const images = imagesIn(Array.from(data?.files ?? []));
+    if (!images.length) return;
+
+    // Text copied from e.g. Word carries an image too; pasting it into another field must still paste the text.
+    const typing = (event.target as HTMLElement | null)?.closest('input, textarea, [contenteditable="true"]');
+    if (typing && data?.types.includes('text/plain')) return;
+
+    event.preventDefault();
+    uploadFiles(images);
+});
+
+const canReadClipboard = typeof navigator !== 'undefined' && window.isSecureContext && 'read' in (navigator.clipboard ?? {});
+
+async function pasteFromClipboard() {
+    uploadError.value = '';
+    try {
+        const files: File[] = [];
+        for (const item of await navigator.clipboard.read()) {
+            const type = item.types.find((t) => t.startsWith('image/'));
+            if (type) files.push(new File([await item.getType(type)], `tempel.${type.split('/')[1]}`, { type }));
+        }
+        if (!files.length) uploadError.value = 'Tidak ada gambar di clipboard. Salin fotonya dulu.';
+        else uploadFiles(files);
+    } catch {
+        uploadError.value = 'Tidak bisa membaca clipboard. Izinkan akses clipboard di browser, atau gunakan Tambah foto.';
+    }
+}
+
+async function uploadFiles(files: File[]) {
     if (!files.length) return;
     uploadError.value = '';
 
@@ -119,9 +157,23 @@ const formatDate = (iso: string) =>
                 <Camera v-else class="size-4" />
                 Tambah foto
             </Button>
+            <Button
+                v-if="canReadClipboard"
+                type="button"
+                variant="outline"
+                size="sm"
+                class="h-9 shrink-0 px-2.5"
+                title="Tempel foto dari clipboard (Ctrl+V)"
+                :disabled="!!uploading"
+                @click="pasteFromClipboard"
+            >
+                <ClipboardPaste class="size-4" />
+                <span class="sr-only">Tempel foto</span>
+            </Button>
             <!-- No `capture` attribute: on phones this offers both the camera and the gallery. -->
             <input ref="fileInput" type="file" accept="image/*" multiple class="hidden" @change="onFilesChosen" />
         </div>
+        <p v-if="canEdit && !uploading" class="mt-1 hidden text-xs text-muted-foreground md:block">Bisa juga tempel foto dengan Ctrl+V.</p>
         <p v-if="uploading" class="mt-1 text-xs text-muted-foreground">
             Mengunggah {{ uploading.index }}/{{ uploading.total }}… {{ uploading.percent }}%
         </p>
