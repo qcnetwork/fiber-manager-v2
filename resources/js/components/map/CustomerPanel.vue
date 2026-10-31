@@ -42,7 +42,7 @@ const odpDistance = computed(() => {
         <div class="flex items-start justify-between gap-2">
             <div class="min-w-0">
                 <div class="text-xs font-medium text-muted-foreground">Pelanggan · {{ customer.area?.name }}</div>
-                <h2 class="text-lg font-semibold leading-tight">{{ customer.name }}</h2>
+                <h2 class="text-lg leading-tight font-semibold">{{ customer.name }}</h2>
                 <div v-if="customer.customer_code" class="truncate text-sm text-muted-foreground">{{ customer.customer_code }}</div>
             </div>
             <Button variant="ghost" size="icon" @click="emit('close')"><X class="size-4" /></Button>

@@ -150,7 +150,7 @@ const endError = computed(() => errors.value.from_id || errors.value.to_id || er
                 id="cable_notes"
                 v-model="form.notes"
                 rows="2"
-                class="rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                class="rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             />
             <InputError :message="form.errors.notes" />
         </div>

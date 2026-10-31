@@ -139,7 +139,7 @@ function submit() {
                 id="pop_notes"
                 v-model="form.notes"
                 rows="2"
-                class="rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                class="rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             />
         </div>
         <p class="text-xs text-muted-foreground">Kode dan nama POP sama dengan area; ubah lewat menu Admin › Area.</p>

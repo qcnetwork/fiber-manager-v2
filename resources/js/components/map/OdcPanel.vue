@@ -31,7 +31,7 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
         <div class="flex items-start justify-between gap-2">
             <div>
                 <div class="text-xs font-medium text-muted-foreground">ODC · {{ odc.area?.name }}</div>
-                <h2 class="text-lg font-semibold leading-tight">{{ odc.code }}</h2>
+                <h2 class="text-lg leading-tight font-semibold">{{ odc.code }}</h2>
                 <div v-if="odc.name" class="text-sm text-muted-foreground">{{ odc.name }}</div>
             </div>
             <Button variant="ghost" size="icon" @click="emit('close')"><X class="size-4" /></Button>

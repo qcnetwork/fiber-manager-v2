@@ -31,7 +31,7 @@ const ends = computed(() => [
         <div class="flex items-start justify-between gap-2">
             <div>
                 <div class="text-xs font-medium text-muted-foreground">Kabel {{ type.label }} · {{ cable.area?.name }}</div>
-                <h2 class="text-lg font-semibold leading-tight">{{ cable.code ?? `Kabel ${type.label}` }}</h2>
+                <h2 class="text-lg leading-tight font-semibold">{{ cable.code ?? `Kabel ${type.label}` }}</h2>
             </div>
             <Button variant="ghost" size="icon" @click="emit('close')"><X class="size-4" /></Button>
         </div>

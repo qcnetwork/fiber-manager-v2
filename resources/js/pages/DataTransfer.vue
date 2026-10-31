@@ -212,7 +212,7 @@ const MAX_SHOWN = 200;
                                 <table class="w-full text-left text-sm">
                                     <tbody class="divide-y">
                                         <tr v-for="(issue, i) in list.slice(0, MAX_SHOWN)" :key="i">
-                                            <td class="whitespace-nowrap px-3 py-1.5 align-top font-medium">{{ issue.where }}</td>
+                                            <td class="px-3 py-1.5 align-top font-medium whitespace-nowrap">{{ issue.where }}</td>
                                             <td class="px-3 py-1.5">{{ issue.message }}</td>
                                         </tr>
                                     </tbody>

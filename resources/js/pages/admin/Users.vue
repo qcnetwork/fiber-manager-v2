@@ -79,7 +79,7 @@ function destroy(user: User) {
                                 </td>
                                 <td class="py-2">{{ roleLabel(user.role) }}</td>
                                 <td class="py-2">{{ user.area?.name ?? 'Semua area' }}</td>
-                                <td class="whitespace-nowrap py-2 text-right">
+                                <td class="py-2 text-right whitespace-nowrap">
                                     <Button variant="ghost" size="icon" title="Edit" @click="edit(user)"><Pencil class="size-4" /></Button>
                                     <Button v-if="user.id !== me.id" variant="ghost" size="icon" title="Hapus" @click="destroy(user)">
                                         <Trash2 class="size-4 text-red-600" />

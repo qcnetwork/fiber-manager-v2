@@ -140,7 +140,7 @@ const formatDate = (iso: string) =>
                         <Button
                             variant="secondary"
                             size="icon"
-                            class="absolute left-2 top-1/2 -translate-y-1/2 opacity-80"
+                            class="absolute top-1/2 left-2 -translate-y-1/2 opacity-80"
                             title="Sebelumnya"
                             @click="step(-1)"
                         >
@@ -149,7 +149,7 @@ const formatDate = (iso: string) =>
                         <Button
                             variant="secondary"
                             size="icon"
-                            class="absolute right-2 top-1/2 -translate-y-1/2 opacity-80"
+                            class="absolute top-1/2 right-2 -translate-y-1/2 opacity-80"
                             title="Berikutnya"
                             @click="step(1)"
                         >

@@ -140,7 +140,7 @@ function saveStatus() {
             <div v-if="canEdit" class="grid gap-2">
                 <Label>{{ port.odcs.length ? 'Tambah ODC lain ke port ini' : 'Sambungkan ODC' }}</Label>
                 <div class="relative">
-                    <Search class="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                    <Search class="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
                     <Input v-model="filter" class="pl-8" placeholder="Cari kode ODC…" />
                 </div>
                 <div v-if="loading" class="flex items-center gap-2 text-sm text-muted-foreground">

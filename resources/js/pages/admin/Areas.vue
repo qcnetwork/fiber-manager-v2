@@ -76,7 +76,7 @@ function destroy(area: AreaRow) {
                                 <td class="py-2 text-right tabular-nums">{{ area.users_count }}</td>
                                 <td class="py-2 text-right tabular-nums">{{ area.odcs_count }}</td>
                                 <td class="py-2 text-right tabular-nums">{{ area.odps_count }}</td>
-                                <td class="whitespace-nowrap py-2 text-right">
+                                <td class="py-2 text-right whitespace-nowrap">
                                     <Button variant="ghost" size="icon" title="Edit" @click="edit(area)"><Pencil class="size-4" /></Button>
                                     <Button variant="ghost" size="icon" title="Hapus" @click="destroy(area)"
                                         ><Trash2 class="size-4 text-red-600"

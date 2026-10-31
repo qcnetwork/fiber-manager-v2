@@ -118,7 +118,7 @@ function submit() {
             <!-- Step 1: choose the ODP -->
             <div v-if="!chosenOdp" class="grid gap-3">
                 <div class="relative">
-                    <Search class="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                    <Search class="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
                     <Input v-model="query" class="pl-8" placeholder="Cari kode ODP…" />
                 </div>
                 <p v-if="query.trim().length < 2" class="text-xs text-muted-foreground">

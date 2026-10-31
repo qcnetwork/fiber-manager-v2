@@ -51,7 +51,7 @@ const portClass = (port: OltPort) =>
         <div class="flex items-start justify-between gap-2">
             <div>
                 <div class="text-xs font-medium text-muted-foreground">POP · {{ pop.code }}</div>
-                <h2 class="text-lg font-semibold leading-tight">{{ pop.name }}</h2>
+                <h2 class="text-lg leading-tight font-semibold">{{ pop.name }}</h2>
             </div>
             <Button variant="ghost" size="icon" @click="emit('close')"><X class="size-4" /></Button>
         </div>
@@ -93,7 +93,7 @@ const portClass = (port: OltPort) =>
                         /></Button>
                     </div>
                 </div>
-                <p v-if="olt.notes" class="mt-1 whitespace-pre-line text-xs text-muted-foreground">{{ olt.notes }}</p>
+                <p v-if="olt.notes" class="mt-1 text-xs whitespace-pre-line text-muted-foreground">{{ olt.notes }}</p>
 
                 <div v-for="card in slots(olt)" :key="card.slot" class="mt-2">
                     <div class="mb-1 text-xs font-medium text-muted-foreground">Slot {{ card.slot }}</div>

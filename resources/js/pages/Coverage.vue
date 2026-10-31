@@ -259,7 +259,7 @@ async function copyResult() {
                 <!-- Panel: bottom on phones (search within thumb reach, map above), left column on desktop -->
                 <section
                     v-show="!panelHidden"
-                    class="max-h-[55%] shrink-0 overflow-y-auto overscroll-contain rounded-t-2xl border-t p-4 pb-[calc(env(safe-area-inset-bottom)_+_1rem)] shadow-[0_-4px_12px_rgba(0,0,0,.08)] md:max-h-none md:w-[400px] md:rounded-none md:border-r md:border-t-0 md:pb-4 md:shadow-none"
+                    class="max-h-[55%] shrink-0 overflow-y-auto overscroll-contain rounded-t-2xl border-t p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-[0_-4px_12px_rgba(0,0,0,.08)] md:max-h-none md:w-[400px] md:rounded-none md:border-t-0 md:border-r md:pb-4 md:shadow-none"
                 >
                     <div class="mb-3 flex items-start justify-between gap-2 max-md:mb-2">
                         <div>
@@ -287,7 +287,7 @@ async function copyResult() {
 
                     <form class="flex gap-2" @submit.prevent="search">
                         <div class="relative flex-1">
-                            <Search class="absolute left-2.5 top-3.5 size-4 text-muted-foreground md:top-3" />
+                            <Search class="absolute top-3.5 left-2.5 size-4 text-muted-foreground md:top-3" />
                             <Input
                                 v-model="query"
                                 type="search"
@@ -402,12 +402,12 @@ async function copyResult() {
 
                 <!-- Map -->
                 <div class="relative min-h-[260px] flex-1">
-                    <SidebarTrigger class="absolute left-2 top-2 z-10 size-10 rounded-full border bg-background shadow md:hidden" />
+                    <SidebarTrigger class="absolute top-2 left-2 z-10 size-10 rounded-full border bg-background shadow-sm md:hidden" />
                     <!-- Panel hidden for a clear map: this brings it back (bottom right on phones, top left on desktop). -->
                     <Button
                         v-if="panelHidden"
                         variant="secondary"
-                        class="absolute bottom-[calc(env(safe-area-inset-bottom)_+_1.75rem)] right-3 z-10 h-11 rounded-full border px-4 shadow-lg md:bottom-auto md:left-14 md:right-auto md:top-2 md:h-10 md:rounded-md md:shadow"
+                        class="absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+1.75rem)] z-10 h-11 rounded-full border px-4 shadow-lg md:top-2 md:right-auto md:bottom-auto md:left-14 md:h-10 md:rounded-md md:shadow-sm"
                         title="Tampilkan panel cek coverage"
                         @click="panelHidden = false"
                     >
