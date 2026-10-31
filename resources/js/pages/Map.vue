@@ -46,22 +46,8 @@ import type {
     PopMarker,
 } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
+import { Box, ChevronDown, ChevronUp, CircleDot, Crosshair, Eye, EyeOff, LoaderCircle, Maximize, Minimize, Radar, Search, Spline } from '@lucide/vue';
 import { useDebounceFn, useFullscreen } from '@vueuse/core';
-import {
-    Box,
-    ChevronDown,
-    ChevronUp,
-    CircleDot,
-    Crosshair,
-    Eye,
-    EyeOff,
-    LoaderCircle,
-    Maximize,
-    Minimize,
-    Radar,
-    Search,
-    Spline,
-} from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{

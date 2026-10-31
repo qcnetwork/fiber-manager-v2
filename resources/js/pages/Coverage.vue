@@ -9,7 +9,6 @@ import { geocode, precisionWarning, resolveLocation, type GeocodeResult, type Lo
 import { currentPosition, getJson } from '@/lib/http';
 import type { Area, BreadcrumbItem, CableLine, OdcMarker, OdpMarker, SharedData } from '@/types';
 import { Head, usePage } from '@inertiajs/vue3';
-import { useFullscreen } from '@vueuse/core';
 import {
     ChevronDown,
     ChevronUp,
@@ -27,7 +26,8 @@ import {
     PanelLeftOpen,
     Search,
     TriangleAlert,
-} from 'lucide-vue-next';
+} from '@lucide/vue';
+import { useFullscreen } from '@vueuse/core';
 import { computed, ref } from 'vue';
 
 interface CoverageOdp {

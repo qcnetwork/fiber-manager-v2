@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { compressImage } from '@/lib/image';
 import type { Photo, PhotoOwner, SharedData } from '@/types';
 import { router, usePage } from '@inertiajs/vue3';
-import { Camera, ChevronLeft, ChevronRight, LoaderCircle, Trash2 } from 'lucide-vue-next';
+import { Camera, ChevronLeft, ChevronRight, LoaderCircle, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 
 const props = defineProps<{

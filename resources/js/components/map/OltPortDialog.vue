@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { getJson } from '@/lib/http';
 import type { Olt, OltPort, Pop } from '@/types';
 import { router, useForm } from '@inertiajs/vue3';
-import { Link2, LoaderCircle, Search, Unlink } from 'lucide-vue-next';
+import { Link2, LoaderCircle, Search, Unlink } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{

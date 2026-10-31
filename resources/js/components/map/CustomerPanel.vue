@@ -3,7 +3,7 @@ import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import { Button } from '@/components/ui/button';
 import { formatLength } from '@/lib/cables';
 import type { Customer } from '@/types';
-import { ArrowRightLeft, MapPinOff, Navigation, Pencil, X } from 'lucide-vue-next';
+import { ArrowRightLeft, MapPinOff, Navigation, Pencil, X } from '@lucide/vue';
 import { computed } from 'vue';
 
 const props = defineProps<{

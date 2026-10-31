@@ -2,7 +2,7 @@
 import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import { Button } from '@/components/ui/button';
 import type { Olt, OltPort, Pop } from '@/types';
-import { MapPin, Navigation, Pencil, Plus, Trash2, X } from 'lucide-vue-next';
+import { MapPin, Navigation, Pencil, Plus, Trash2, X } from '@lucide/vue';
 import { computed } from 'vue';
 
 const props = defineProps<{

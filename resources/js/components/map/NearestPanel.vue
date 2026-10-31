@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { NearestOdp } from '@/types';
-import { Crosshair, LoaderCircle, Search, TriangleAlert, X } from 'lucide-vue-next';
+import { Crosshair, LoaderCircle, Search, TriangleAlert, X } from '@lucide/vue';
 import { ref } from 'vue';
 
 defineProps<{

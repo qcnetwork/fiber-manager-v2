@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { Area, BreadcrumbItem } from '@/types';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { Pencil, Trash2 } from 'lucide-vue-next';
+import { Pencil, Trash2 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 
 type AreaRow = Area & { users_count: number; odcs_count: number; odps_count: number };

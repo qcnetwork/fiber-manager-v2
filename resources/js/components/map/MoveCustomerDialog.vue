@@ -6,8 +6,8 @@ import { Input } from '@/components/ui/input';
 import { getJson } from '@/lib/http';
 import type { Customer, NearestOdp, PortStatus } from '@/types';
 import { useForm } from '@inertiajs/vue3';
+import { ArrowLeft, LoaderCircle, Search } from '@lucide/vue';
 import { useDebounceFn } from '@vueuse/core';
-import { ArrowLeft, LoaderCircle, Search } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{

@@ -3,7 +3,7 @@ import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import StatusBadge from '@/components/map/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import type { OdcDetail } from '@/types';
-import { Navigation, Pencil, Plus, Trash2, X } from 'lucide-vue-next';
+import { Navigation, Pencil, Plus, Trash2, X } from '@lucide/vue';
 import { computed } from 'vue';
 
 const props = defineProps<{

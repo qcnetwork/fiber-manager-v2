@@ -3,7 +3,7 @@ import StatusBadge from '@/components/map/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { cableTypes, endLabel, formatLength } from '@/lib/cables';
 import type { Cable, CableEndKind } from '@/types';
-import { Pencil, Trash2, X } from 'lucide-vue-next';
+import { Pencil, Trash2, X } from '@lucide/vue';
 import { computed } from 'vue';
 
 const props = defineProps<{

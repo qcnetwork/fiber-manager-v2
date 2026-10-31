@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { Olt } from '@/types';
 import { useForm } from '@inertiajs/vue3';
-import { LoaderCircle, Plus, Trash2 } from 'lucide-vue-next';
+import { LoaderCircle, Plus, Trash2 } from '@lucide/vue';
 import { computed, watch } from 'vue';
 
 const props = defineProps<{

@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { cableTypes, endLabel, formatLength, pathLength } from '@/lib/cables';
 import type { Area, Cable, CableEndpoint, CableType, LatLng } from '@/types';
 import { useForm } from '@inertiajs/vue3';
-import { LoaderCircle, Undo2, X } from 'lucide-vue-next';
+import { LoaderCircle, Undo2, X } from '@lucide/vue';
 import { computed, watch } from 'vue';
 
 const props = defineProps<{

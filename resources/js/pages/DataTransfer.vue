@@ -8,7 +8,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { cableTypes } from '@/lib/cables';
 import type { BreadcrumbItem } from '@/types';
 import { Head, useForm, usePage } from '@inertiajs/vue3';
-import { CircleAlert, CircleCheck, Download, FileSpreadsheet, Globe, LoaderCircle, Upload } from 'lucide-vue-next';
+import { CircleAlert, CircleCheck, Download, FileSpreadsheet, Globe, LoaderCircle, Upload } from '@lucide/vue';
 import { computed, ref } from 'vue';
 
 type Issue = { where: string; message: string };

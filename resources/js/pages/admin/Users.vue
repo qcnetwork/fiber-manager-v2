@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem, Role, SharedData, User } from '@/types';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { Pencil, Trash2 } from 'lucide-vue-next';
+import { Pencil, Trash2 } from '@lucide/vue';
 import { ref } from 'vue';
 
 const props = defineProps<{

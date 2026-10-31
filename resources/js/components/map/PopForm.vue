@@ -7,7 +7,7 @@ import { precisionWarning, resolveLocation } from '@/lib/coordinates';
 import { currentPosition } from '@/lib/http';
 import type { Pop } from '@/types';
 import { useForm } from '@inertiajs/vue3';
-import { Crosshair, LoaderCircle, TriangleAlert, X } from 'lucide-vue-next';
+import { Crosshair, LoaderCircle, TriangleAlert, X } from '@lucide/vue';
 import { ref, watch } from 'vue';
 
 const props = defineProps<{

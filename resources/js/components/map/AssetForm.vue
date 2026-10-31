@@ -7,8 +7,8 @@ import { Label } from '@/components/ui/label';
 import { currentPosition, getJson } from '@/lib/http';
 import type { Area, AssetKind, Odc, OdcOption, Odp, OltPortStatus } from '@/types';
 import { useForm } from '@inertiajs/vue3';
+import { Crosshair, LoaderCircle, X } from '@lucide/vue';
 import { useDebounceFn } from '@vueuse/core';
-import { Crosshair, LoaderCircle, X } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
