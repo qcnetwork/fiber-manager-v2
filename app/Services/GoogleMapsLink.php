@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Composer\CaBundle\CaBundle;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
@@ -72,8 +73,8 @@ class GoogleMapsLink
             try {
                 $response = Http::withoutRedirecting()
                     ->timeout(8)
-                    // PHP on Windows often ships without a CA bundle; trust the Windows certificate store instead.
-                    ->when(PHP_OS_FAMILY === 'Windows', fn ($http) => $http->withOptions(['curl' => [CURLOPT_SSL_OPTIONS => CURLSSLOPT_NATIVE_CA]]))
+                    // PHP on Windows often ships without a CA bundle; this finds the system one or falls back to a bundled copy.
+                    ->withOptions(['verify' => CaBundle::getSystemCaRootBundlePath()])
                     ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; FiberManager/2.0)', 'Accept-Language' => 'id'])
                     ->get($current);
             } catch (ConnectionException) {
