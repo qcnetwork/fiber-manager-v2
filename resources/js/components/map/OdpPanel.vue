@@ -31,6 +31,7 @@ const portStyles: Record<PortStatus, string> = {
 
 const ports = computed(() => props.odp.ports ?? []);
 const used = computed(() => ports.value.filter((p) => p.status !== 'kosong').length);
+const unknownCount = computed(() => ports.value.filter((p) => p.status === 'terpakai' && !p.customer).length);
 const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destination=${props.odp.lat},${props.odp.lng}`);
 </script>
 
@@ -92,12 +93,13 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
                     type="button"
                     class="flex h-12 flex-col items-center justify-center rounded-md border-2 text-sm font-semibold transition hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
                     :class="portStyles[port.status]"
-                    :title="port.customer ? port.customer.name : port.status"
+                    :title="port.customer ? port.customer.name : port.status === 'terpakai' ? 'Terpakai, pelanggan belum diketahui' : port.status"
                     :disabled="!canEdit"
                     @click="emit('openPort', port)"
                 >
                     {{ port.number }}
                     <span v-if="port.customer" class="max-w-full truncate px-1 text-[10px] font-normal">{{ port.customer.name }}</span>
+                    <span v-else-if="port.status === 'terpakai'" class="text-[10px] font-normal italic opacity-80">belum diketahui</span>
                 </button>
             </div>
             <div class="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -106,6 +108,9 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
                 <span><span class="mr-1 inline-block size-2.5 rounded-sm bg-amber-400" />Booking</span>
                 <span><span class="mr-1 inline-block size-2.5 rounded-sm bg-gray-400" />Rusak</span>
             </div>
+            <p v-if="unknownCount" class="mt-1 text-xs text-muted-foreground">
+                {{ unknownCount }} port terpakai belum ada data pelanggannya{{ canEdit ? ', klik port untuk melengkapi' : '' }}.
+            </p>
         </div>
 
         <div v-if="ports.some((p) => p.customer)">

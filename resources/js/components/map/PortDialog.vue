@@ -25,6 +25,8 @@ const emptyCustomer = { name: '', customer_code: '', phone: '', address: '', pac
 const form = useForm({
     status: 'kosong' as OdpPort['status'],
     notes: '',
+    // In use, but nobody knows by whom yet: no customer record is created.
+    customer_unknown: false,
     customer: { ...emptyCustomer },
 });
 
@@ -35,6 +37,7 @@ watch(
         form.clearErrors();
         form.status = port.status;
         form.notes = port.notes ?? '';
+        form.customer_unknown = port.status === 'terpakai' && !port.customer;
         form.customer = {
             name: port.customer?.name ?? '',
             customer_code: port.customer?.customer_code ?? '',
@@ -69,14 +72,30 @@ function submit() {
                     <Label for="port_status">Status port</Label>
                     <NativeSelect id="port_status" v-model="form.status">
                         <option value="kosong">Kosong</option>
-                        <option value="terpakai">Terpakai (ada pelanggan)</option>
+                        <option value="terpakai">Terpakai</option>
                         <option value="booking">Booking</option>
                         <option value="rusak">Rusak</option>
                     </NativeSelect>
                     <InputError :message="form.errors.status" />
                 </div>
 
-                <template v-if="form.status === 'terpakai'">
+                <label v-if="form.status === 'terpakai'" class="flex items-start gap-2 text-sm">
+                    <input v-model="form.customer_unknown" type="checkbox" class="mt-0.5 size-4 rounded border-input" />
+                    <span>
+                        Pelanggan belum diketahui
+                        <span class="block text-xs text-muted-foreground"
+                            >Port sudah dipakai tapi nama pelanggannya belum ada. Bisa dilengkapi nanti.</span
+                        >
+                    </span>
+                </label>
+                <p
+                    v-if="form.status === 'terpakai' && form.customer_unknown && port?.customer"
+                    class="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                >
+                    Pelanggan <b>{{ port.customer.name }}</b> akan dilepas dari port ini.
+                </p>
+
+                <template v-if="form.status === 'terpakai' && !form.customer_unknown">
                     <div class="grid gap-1.5">
                         <Label for="c_name">Nama pelanggan</Label>
                         <Input id="c_name" v-model="form.customer.name" required />
@@ -108,7 +127,10 @@ function submit() {
                         </div>
                     </div>
                 </template>
-                <p v-else-if="port?.customer" class="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                <p
+                    v-else-if="form.status !== 'terpakai' && port?.customer"
+                    class="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                >
                     Pelanggan <b>{{ port.customer.name }}</b> akan dilepas dari port ini.
                 </p>
 

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\PortStatus;
 use App\Enums\Role;
 use App\Models\Area;
+use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\User;
@@ -121,6 +122,24 @@ class NetworkTest extends TestCase
 
         $this->patch("/ports/{$port->id}", ['status' => 'kosong'])->assertSessionHasNoErrors();
         $this->assertNull($port->fresh()->customer_id);
+    }
+
+    public function test_a_port_can_be_in_use_by_an_unknown_customer()
+    {
+        $area = Area::factory()->create();
+        $port = Odp::factory()->for($area)->create()->ports()->first();
+        $this->actingAs($this->userIn($area));
+
+        // Without the flag the name is still required.
+        $this->patch("/ports/{$port->id}", ['status' => 'terpakai'])->assertSessionHasErrors('customer.name');
+
+        $this->patch("/ports/{$port->id}", ['status' => 'terpakai', 'customer_unknown' => true, 'customer' => ['name' => '']])
+            ->assertSessionHasNoErrors();
+
+        $port->refresh();
+        $this->assertSame(PortStatus::Terpakai, $port->status);
+        $this->assertNull($port->customer_id);
+        $this->assertSame(0, Customer::count());
     }
 
     public function test_nearest_returns_available_odps_closest_first()

@@ -21,12 +21,14 @@ class OdpPortController extends Controller
         $odp = $port->odp()->firstOrFail();
         abort_unless($request->user()->canEditNetwork(), 403);
 
-        $inUse = $request->input('status') === PortStatus::Terpakai->value;
+        // A port can be in use by a customer nobody has recorded yet (e.g. found connected in the field).
+        $withCustomer = $request->input('status') === PortStatus::Terpakai->value && ! $request->boolean('customer_unknown');
 
         $data = $request->validate([
             'status' => ['required', Rule::enum(PortStatus::class)],
+            'customer_unknown' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:255'],
-            'customer.name' => [Rule::requiredIf($inUse), 'nullable', 'string', 'max:255'],
+            'customer.name' => [Rule::requiredIf($withCustomer), 'nullable', 'string', 'max:255'],
             'customer.customer_code' => [
                 'nullable', 'string', 'max:50',
                 Rule::unique('customers', 'customer_code')->ignore($port->customer_id),
@@ -38,13 +40,13 @@ class OdpPortController extends Controller
             'customer.lat' => ['nullable', 'numeric', 'between:-90,90'],
             'customer.lng' => ['nullable', 'numeric', 'between:-180,180'],
         ], [
-            'customer.name.required' => 'Nama pelanggan wajib diisi untuk port terpakai.',
+            'customer.name.required' => 'Nama pelanggan wajib diisi, atau centang "Pelanggan belum diketahui".',
         ]);
 
-        DB::transaction(function () use ($port, $odp, $data, $inUse) {
+        DB::transaction(function () use ($port, $odp, $data, $withCustomer) {
             $customerId = null;
 
-            if ($inUse) {
+            if ($withCustomer) {
                 $customer = $port->customer ?? new Customer(['area_id' => $odp->area_id]);
                 $customer->fill($data['customer'])->save();
                 $customerId = $customer->id;
