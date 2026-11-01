@@ -2,6 +2,7 @@
 
 namespace App\Models\Concerns;
 
+use App\Models\ActivityLog;
 use App\Models\Cable;
 
 /**
@@ -14,10 +15,11 @@ trait ConnectsCables
         static::updated(function ($asset) {
             // POPs (areas) keep their location in center_lat/center_lng.
             if ($asset->wasChanged(['lat', 'lng', 'center_lat', 'center_lng'])) {
-                Cable::followEndpoint($asset);
+                // Cable ends following along are part of the asset's own change, not separate edits.
+                ActivityLog::muted(fn () => Cable::followEndpoint($asset));
             }
         });
 
-        static::deleted(fn ($asset) => Cable::followEndpoint($asset, deleted: true));
+        static::deleted(fn ($asset) => ActivityLog::muted(fn () => Cable::followEndpoint($asset, deleted: true)));
     }
 }

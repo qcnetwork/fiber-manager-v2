@@ -7,6 +7,7 @@ use App\Enums\PortStatus;
 use App\Models\Concerns\BelongsToArea;
 use App\Models\Concerns\ConnectsCables;
 use App\Models\Concerns\HasPhotos;
+use App\Models\Concerns\LogsActivity;
 use Database\Factories\OdpFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -17,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Odp extends Model
 {
     /** @use HasFactory<OdpFactory> */
-    use BelongsToArea, ConnectsCables, HasFactory, HasPhotos;
+    use BelongsToArea, ConnectsCables, HasFactory, HasPhotos, LogsActivity;
 
     protected $fillable = [
         'area_id', 'odc_id', 'odc_port', 'code', 'name', 'lat', 'lng', 'address', 'pole_number',
@@ -80,7 +81,8 @@ class Odp extends Model
         $this->ports()->whereKey($toRemove->modelKeys())->delete();
 
         $missing = collect(range(1, $this->capacity))->diff($existing->keys());
-        $this->ports()->createMany($missing->map(fn (int $number) => ['number' => $number])->all());
+        // New ports show up as the ODP's capacity change; no entry per port.
+        ActivityLog::muted(fn () => $this->ports()->createMany($missing->map(fn (int $number) => ['number' => $number])->all()));
 
         return true;
     }

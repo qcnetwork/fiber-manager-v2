@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\PortStatus;
+use App\Models\ActivityLog;
 use App\Models\Customer;
 use App\Models\Odp;
 use App\Models\OdpPort;
@@ -111,12 +112,17 @@ class CustomerController extends Controller
             throw ValidationException::withMessages(['port_id' => "Port {$target->number} di {$odp->code} sudah tidak kosong. Pilih port lain."]);
         }
 
-        DB::transaction(function () use ($customer, $target, $odp) {
+        $from = $customer->port?->activityLabel();
+
+        // One "moved" entry instead of the separate port and customer changes underneath.
+        ActivityLog::muted(fn () => DB::transaction(function () use ($customer, $target, $odp) {
             $customer->port()->update(['customer_id' => null, 'status' => PortStatus::Kosong]);
             $target->update(['customer_id' => $customer->id, 'status' => PortStatus::Terpakai]);
             // The customer follows the ODP's area, so it stays visible to that area's team.
             $customer->update(['area_id' => $odp->area_id]);
-        });
+        }));
+
+        $customer->logActivity('moved', ['port' => [$from, $target->activityLabel()]]);
 
         return back();
     }

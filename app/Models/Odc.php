@@ -6,6 +6,7 @@ use App\Enums\AssetStatus;
 use App\Models\Concerns\BelongsToArea;
 use App\Models\Concerns\ConnectsCables;
 use App\Models\Concerns\HasPhotos;
+use App\Models\Concerns\LogsActivity;
 use Database\Factories\OdcFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Odc extends Model
 {
     /** @use HasFactory<OdcFactory> */
-    use BelongsToArea, ConnectsCables, HasFactory, HasPhotos;
+    use BelongsToArea, ConnectsCables, HasFactory, HasPhotos, LogsActivity;
 
     protected $fillable = [
         'area_id', 'olt_port_id', 'code', 'name', 'lat', 'lng', 'address',

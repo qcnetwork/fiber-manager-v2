@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\LogsActivity;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,8 @@ use Illuminate\Support\Facades\Storage;
 
 class Photo extends Model
 {
+    use LogsActivity;
+
     protected $fillable = ['user_id', 'path', 'thumb_path', 'caption', 'width', 'height', 'size'];
 
     protected $appends = ['url', 'thumb_url'];
@@ -29,6 +32,29 @@ class Photo extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function activityLabel(): string
+    {
+        $owner = $this->photoable;
+        $label = $owner && method_exists($owner, 'activityLabel') ? $owner->activityLabel() : '';
+
+        return trim("Foto {$label}".($this->caption ? " ({$this->caption})" : ''));
+    }
+
+    public function activityAreaId(): ?int
+    {
+        $owner = $this->photoable;
+
+        return $owner && method_exists($owner, 'activityAreaId') ? $owner->activityAreaId() : null;
+    }
+
+    /**
+     * The label already says which photo; its file details mean nothing to a reader.
+     */
+    protected function activityIgnored(): array
+    {
+        return ['photoable_type', 'photoable_id', 'user_id', 'path', 'thumb_path', 'width', 'height', 'size'];
     }
 
     protected function url(): Attribute

@@ -5,13 +5,14 @@ namespace App\Models;
 use App\Enums\AssetStatus;
 use App\Enums\CableType;
 use App\Models\Concerns\BelongsToArea;
+use App\Models\Concerns\LogsActivity;
 use App\Services\GeoService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Cable extends Model
 {
-    use BelongsToArea;
+    use BelongsToArea, LogsActivity;
 
     protected $fillable = [
         'area_id', 'code', 'type', 'cores', 'status', 'from_type', 'from_id', 'to_type', 'to_id', 'path', 'notes',
@@ -45,6 +46,19 @@ class Cable extends Model
             $cable->min_lng = min(array_column($path, 1));
             $cable->max_lng = max(array_column($path, 1));
         });
+    }
+
+    protected function activityIgnored(): array
+    {
+        return ['min_lat', 'max_lat', 'min_lng', 'max_lng'];
+    }
+
+    /**
+     * The route is a long list of points; the log only says it changed (the length shows by how much).
+     */
+    protected function activityMasked(): array
+    {
+        return ['path'];
     }
 
     public function from(): MorphTo

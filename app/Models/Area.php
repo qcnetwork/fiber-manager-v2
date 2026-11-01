@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\ConnectsCables;
 use App\Models\Concerns\HasPhotos;
+use App\Models\Concerns\LogsActivity;
 use Database\Factories\AreaFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Area extends Model
 {
     /** @use HasFactory<AreaFactory> */
-    use ConnectsCables, HasFactory, HasPhotos;
+    use ConnectsCables, HasFactory, HasPhotos, LogsActivity;
 
     protected $fillable = ['code', 'name', 'center_lat', 'center_lng', 'address', 'notes'];
 
@@ -59,5 +60,10 @@ class Area extends Model
     public function odps(): HasMany
     {
         return $this->hasMany(Odp::class);
+    }
+
+    public function activityAreaId(): ?int
+    {
+        return $this->id;
     }
 }

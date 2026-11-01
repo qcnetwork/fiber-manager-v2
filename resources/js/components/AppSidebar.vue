@@ -4,7 +4,7 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { ArrowDownUp, Download, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
+import { ArrowDownUp, Download, History, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
 import { computed } from 'vue';
 import { useInstallPrompt } from '@/composables/usePwa';
 import AppLogo from './AppLogo.vue';
@@ -37,8 +37,18 @@ const staffNavItems: NavItem[] = [
     },
 ];
 
-// Sales accounts only use the coverage check.
-const mainNavItems = computed(() => (page.props.auth.user.role === 'sales' ? [coverageItem] : staffNavItems));
+const activityItem: NavItem = {
+    title: 'Riwayat Aktivitas',
+    href: '/activity',
+    icon: History,
+};
+
+// Sales accounts only use the coverage check; the history is for the admins who can delete data.
+const mainNavItems = computed(() => {
+    const role = page.props.auth.user.role;
+    if (role === 'sales') return [coverageItem];
+    return role === 'super_admin' || role === 'admin_area' ? [...staffNavItems, activityItem] : staffNavItems;
+});
 
 const adminNavItems: NavItem[] = [
     {

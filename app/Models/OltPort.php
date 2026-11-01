@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class OltPort extends Model
 {
+    use LogsActivity;
+
     public const STATUSES = ['normal', 'rusak'];
 
     protected $fillable = ['olt_id', 'slot', 'port', 'status', 'notes'];
@@ -27,5 +30,15 @@ class OltPort extends Model
     public function odcs(): HasMany
     {
         return $this->hasMany(Odc::class);
+    }
+
+    public function activityLabel(): string
+    {
+        return "{$this->olt?->code} PON {$this->slot}/{$this->port}";
+    }
+
+    public function activityAreaId(): ?int
+    {
+        return $this->olt?->area_id;
     }
 }

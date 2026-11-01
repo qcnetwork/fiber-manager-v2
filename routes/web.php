@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\CableController;
@@ -63,6 +64,8 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::get('data/export/{format}', [DataTransferController::class, 'export'])->name('data.export');
     Route::get('data/template', [DataTransferController::class, 'template'])->name('data.template');
     Route::post('data/import', [DataTransferController::class, 'import'])->name('data.import');
+
+    Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
 
     Route::middleware(EnsureSuperAdmin::class)->prefix('admin')->name('admin.')->group(function () {
         Route::resource('areas', AreaController::class)->only(['index', 'store', 'update', 'destroy']);

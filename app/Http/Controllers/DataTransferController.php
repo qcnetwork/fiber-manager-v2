@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\CableType;
+use App\Models\ActivityLog;
 use App\Models\Area;
 use App\Services\Transfer\ExcelExporter;
 use App\Services\Transfer\ImportException;
@@ -86,14 +87,25 @@ class DataTransferController extends Controller
         $importer = new NetworkImporter($areaId);
 
         try {
-            if (strtolower($file->getClientOriginalExtension()) === 'xlsx') {
-                $rows = app(SheetReader::class)->read($file->getRealPath());
-                $result = $importer->import($rows['odc'], $rows['odp']);
-            } else {
-                $result = $this->importKml($importer, $file->getRealPath(), $file->getClientOriginalName(), $data);
-            }
+            // One "imported" entry for the whole file instead of one per row.
+            $result = ActivityLog::muted(function () use ($file, $importer, $data) {
+                if (strtolower($file->getClientOriginalExtension()) === 'xlsx') {
+                    $rows = app(SheetReader::class)->read($file->getRealPath());
+
+                    return $importer->import($rows['odc'], $rows['odp']);
+                }
+
+                return $this->importKml($importer, $file->getRealPath(), $file->getClientOriginalName(), $data);
+            });
         } catch (ImportException $e) {
             $result = ['ok' => false, 'created' => [], 'updated' => [], 'skipped' => [], 'errors' => [['where' => 'File', 'message' => $e->getMessage()]]];
+        }
+
+        if ($result['ok'] && array_sum($result['created']) + array_sum($result['updated']) > 0) {
+            $summary = collect($result['created'])
+                ->map(fn (int $created, string $kind) => [null, "{$created} baru, {$result['updated'][$kind]} diubah"])
+                ->put('skipped', [null, count($result['skipped'])]);
+            ActivityLog::record('imported', 'import', null, $file->getClientOriginalName(), $areaId, $summary->all());
         }
 
         return back()->with('importResult', [...$result, 'file' => $file->getClientOriginalName()]);

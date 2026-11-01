@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\Role;
+use App\Models\Concerns\LogsActivity;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,7 @@ use Illuminate\Notifications\Notifiable;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, LogsActivity, Notifiable;
 
     /**
      * The attributes that are mass assignable.
@@ -60,6 +61,29 @@ class User extends Authenticatable
     public function area(): BelongsTo
     {
         return $this->belongsTo(Area::class);
+    }
+
+    public function activityLabel(): string
+    {
+        return $this->name;
+    }
+
+    /**
+     * Only super admins manage users, so their history is not tied to an area.
+     */
+    public function activityAreaId(): ?int
+    {
+        return null;
+    }
+
+    protected function activityIgnored(): array
+    {
+        return ['remember_token', 'email_verified_at'];
+    }
+
+    protected function activityMasked(): array
+    {
+        return ['password'];
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToArea;
+use App\Models\Concerns\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Olt extends Model
 {
-    use BelongsToArea;
+    use BelongsToArea, LogsActivity;
 
     protected $fillable = ['area_id', 'code', 'name', 'brand', 'ip_address', 'pon_ports', 'address', 'notes'];
 
@@ -38,11 +39,12 @@ class Olt extends Model
         }
 
         OltPort::whereKey($toRemove->pluck('id')->all())->delete();
-        $this->ports()->createMany($wanted->diff($existing->keys())->map(function (string $key) {
+        // New ports show up as the OLT's port count change; no entry per port.
+        ActivityLog::muted(fn () => $this->ports()->createMany($wanted->diff($existing->keys())->map(function (string $key) {
             [$slot, $port] = explode('/', $key);
 
             return ['slot' => (int) $slot, 'port' => (int) $port];
-        })->values()->all());
+        })->values()->all()));
 
         $this->update(['pon_ports' => $wanted->count()]);
 
