@@ -4,11 +4,13 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { ArrowDownUp, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
+import { ArrowDownUp, Download, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
 import { computed } from 'vue';
+import { useInstallPrompt } from '@/composables/usePwa';
 import AppLogo from './AppLogo.vue';
 
 const page = usePage<SharedData>();
+const { canInstall, install } = useInstallPrompt();
 
 const coverageItem: NavItem = {
     title: 'Cek Coverage',
@@ -72,6 +74,14 @@ const adminNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
+            <SidebarMenu v-if="canInstall">
+                <SidebarMenuItem>
+                    <SidebarMenuButton tooltip="Install aplikasi" @click="install">
+                        <Download />
+                        <span>Install aplikasi</span>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
             <NavUser />
         </SidebarFooter>
     </Sidebar>

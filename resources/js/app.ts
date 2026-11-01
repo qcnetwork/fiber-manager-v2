@@ -6,6 +6,7 @@ import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { initializeTheme } from './composables/useAppearance';
+import { registerPwa } from './composables/usePwa';
 
 // Extend ImportMeta interface for Vite...
 declare global {
@@ -32,3 +33,6 @@ createInertiaApp({
 
 // This will set light / dark mode on page load...
 initializeTheme();
+
+// Installable app (PWA): service worker + install prompt.
+registerPwa();
