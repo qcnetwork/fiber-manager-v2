@@ -122,8 +122,8 @@ const freeOdcPorts = computed(() => {
     return Array.from({ length: odc.capacity }, (_, i) => i + 1).filter((p) => !taken.has(p));
 });
 
-// Common sizes, plus an unusual stored value (e.g. 9 from older data) so editing keeps it.
-const odpCapacities = computed(() => [...new Set([2, 4, 8, 16, 24, 32, Number(form.capacity)])].sort((a, b) => a - b));
+// Common sizes as quick picks; any other number can be typed.
+const odpCapacities = [2, 4, 8, 16, 24, 32];
 
 function submit() {
     const resource = props.kind === 'odc' ? 'odcs' : 'odps';
@@ -251,9 +251,21 @@ function submit() {
             <div class="grid gap-1.5">
                 <Label for="capacity">{{ kind === 'odc' ? 'Kapasitas port output' : 'Jumlah port' }}</Label>
                 <Input v-if="kind === 'odc'" id="capacity" v-model="form.capacity" type="number" min="1" max="1024" />
-                <NativeSelect v-else id="capacity" v-model="form.capacity">
-                    <option v-for="c in odpCapacities" :key="c" :value="c">{{ c }} port</option>
-                </NativeSelect>
+                <template v-else>
+                    <Input id="capacity" v-model="form.capacity" type="number" inputmode="numeric" min="1" max="64" required />
+                    <div class="flex flex-wrap gap-1">
+                        <button
+                            v-for="c in odpCapacities"
+                            :key="c"
+                            type="button"
+                            class="rounded border px-1.5 py-0.5 text-xs tabular-nums hover:bg-muted"
+                            :class="Number(form.capacity) === c ? 'border-primary bg-primary text-primary-foreground hover:bg-primary' : ''"
+                            @click="form.capacity = c"
+                        >
+                            {{ c }}
+                        </button>
+                    </div>
+                </template>
                 <InputError :message="form.errors.capacity" />
             </div>
             <div class="grid gap-1.5">
