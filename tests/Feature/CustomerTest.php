@@ -59,6 +59,28 @@ class CustomerTest extends TestCase
         $this->assertSame([], $this->getJson('/map/customers?bbox=110,-7,111,-6')->json('customers'));
     }
 
+    public function test_search_looks_in_address_and_notes_and_says_where_it_matched()
+    {
+        $this->odp->update(['address' => 'Jl. Melati No. 5', 'notes' => 'Tiang dekat masjid Al-Ikhlas']);
+        $byCode = Odp::factory()->for($this->area)->create(['code' => 'ODP-MELATI']);
+        $this->customer->update(['address' => 'Gg. Kenanga RT 02']);
+
+        $this->actingAs($this->user());
+
+        $results = collect($this->getJson('/map/search?q=melati')->json())->where('kind', 'odp')->values();
+        // A code match ranks before an address match, and needs no explanation.
+        $this->assertSame([$byCode->code, 'ODP-A'], $results->pluck('code')->all());
+        $this->assertNull($results[0]['detail']);
+        $this->assertSame('Alamat: Jl. Melati No. 5', $results[1]['detail']);
+
+        $notes = collect($this->getJson('/map/search?q=masjid')->json())->firstWhere('kind', 'odp');
+        $this->assertSame('Catatan: Tiang dekat masjid Al-Ikhlas', $notes['detail']);
+
+        $customer = collect($this->getJson('/map/search?q=kenanga')->json())->firstWhere('kind', 'customer');
+        $this->assertSame('Budi Santoso', $customer['code']);
+        $this->assertSame('Alamat: Gg. Kenanga RT 02', $customer['detail']);
+    }
+
     public function test_search_finds_customers_but_not_for_sales()
     {
         $this->actingAs($this->user());

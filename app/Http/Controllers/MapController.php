@@ -147,46 +147,107 @@ class MapController extends Controller
             return response()->json([]);
         }
 
-        $match = fn ($query) => $query
-            ->where(fn ($q) => $q->where('code', 'like', "%{$term}%")->orWhere('name', 'like', "%{$term}%"))
-            ->orderBy('code')
-            ->limit(10)
-            ->get(['id', 'code', 'name', 'lat', 'lng']);
+        $user = $request->user();
+        $like = "%{$term}%";
+
+        /*
+         * Matches any of $columns; rows whose $primary columns (code/name) match come first, then the rest
+         * (address, notes, ...). The matching secondary field is returned as `detail` so the user sees why it was found.
+         */
+        $find = function ($query, array $primary, array $secondary, int $limit) use ($like) {
+            $hitPrimary = implode(' or ', array_map(fn ($c) => "{$c} like ?", $primary));
+
+            return $query
+                ->where(fn ($q) => collect([...$primary, ...$secondary])->each(fn ($c) => $q->orWhere($c, 'like', $like)))
+                ->orderByRaw("case when {$hitPrimary} then 0 else 1 end", array_fill(0, count($primary), $like))
+                ->orderBy($primary[0])
+                ->limit($limit);
+        };
+        $detail = function ($model, array $secondary, array $primary = ['code', 'name']) use ($term): ?string {
+            // Found by code/name: the result already shows why.
+            foreach ($primary as $column) {
+                if (mb_stripos((string) $model->{$column}, $term) !== false) {
+                    return null;
+                }
+            }
+
+            foreach ($secondary as $column => $label) {
+                $value = (string) $model->{$column};
+                $at = mb_stripos($value, $term);
+                if ($at === false) {
+                    continue;
+                }
+                // A short window around the match, so long notes stay on one line.
+                $start = max(0, $at - 30);
+                $snippet = mb_substr($value, $start, 90);
+
+                return "{$label}: ".($start > 0 ? '…' : '').preg_replace('/\s+/', ' ', $snippet).($start + 90 < mb_strlen($value) ? '…' : '');
+            }
+
+            return null;
+        };
+
+        $assetFields = ['address' => 'Alamat', 'notes' => 'Catatan'];
+        $odcs = $find(Odc::query(), ['code', 'name'], array_keys($assetFields), 10)
+            ->get(['id', 'code', 'name', 'lat', 'lng', 'address', 'notes']);
+        $odpFields = [...$assetFields, 'pole_number' => 'Tiang'];
+        $odps = $find(Odp::query(), ['code', 'name'], array_keys($odpFields), 10)
+            ->get(['id', 'code', 'name', 'lat', 'lng', 'address', 'notes', 'pole_number']);
 
         // Sales can search the network but never customers.
-        $customers = $request->user()->isSales() ? collect() : Customer::query()
-            ->where(fn ($q) => $q->where('name', 'like', "%{$term}%")
-                ->orWhere('customer_code', 'like', "%{$term}%")
-                ->orWhere('phone', 'like', "%{$term}%"))
+        $customerFields = ['address' => 'Alamat', 'ont_sn' => 'SN ONT', 'package' => 'Paket'];
+        $customers = $user->isSales() ? collect() : $find(Customer::query(), ['name', 'customer_code', 'phone'], array_keys($customerFields), 10)
             ->with('port.odp:id,code,lat,lng')
-            ->orderBy('name')
-            ->limit(10)
-            ->get(['id', 'name', 'customer_code', 'lat', 'lng']);
+            ->get(['id', 'name', 'customer_code', 'phone', 'lat', 'lng', 'address', 'ont_sn', 'package']);
 
-        // POPs by area code/name, and by the code of an OLT there.
-        $user = $request->user();
+        // POPs by area code/name/address/notes, and by the code of an OLT there.
         $pops = $user->isSales() ? collect() : Area::query()
             ->whereNotNull('center_lat')
             ->when(! $user->seesAllAreas(), fn ($q) => $q->whereKey($user->area_id))
-            ->where(fn ($q) => $q->where('code', 'like', "%{$term}%")
-                ->orWhere('name', 'like', "%{$term}%")
-                ->orWhereHas('olts', fn ($o) => $o->where('code', 'like', "%{$term}%")))
+            ->where(fn ($q) => $q->where('code', 'like', $like)
+                ->orWhere('name', 'like', $like)
+                ->orWhere('address', 'like', $like)
+                ->orWhere('notes', 'like', $like)
+                ->orWhereHas('olts', fn ($o) => $o->where('code', 'like', $like)))
             ->orderBy('name')
             ->limit(5)
-            ->get(['id', 'code', 'name', 'center_lat', 'center_lng']);
+            ->get(['id', 'code', 'name', 'center_lat', 'center_lng', 'address', 'notes']);
+
+        // Cables by code or notes; shown at the middle of their route.
+        $cables = $user->isSales() ? collect() : $find(Cable::query(), ['code'], ['notes'], 5)
+            ->get(['id', 'code', 'type', 'min_lat', 'max_lat', 'min_lng', 'max_lng', 'notes']);
 
         return response()->json([
-            ...$pops->map(fn (Area $pop) => ['kind' => 'pop', 'id' => $pop->id, 'code' => $pop->name, 'name' => $pop->code, 'lat' => $pop->lat, 'lng' => $pop->lng]),
-            ...$match(Odc::query())->map(fn (Odc $odc) => ['kind' => 'odc', ...$odc->toArray()]),
-            ...$match(Odp::query())->map(fn (Odp $odp) => ['kind' => 'odp', ...$odp->toArray()]),
+            ...$pops->map(fn (Area $pop) => [
+                'kind' => 'pop', 'id' => $pop->id, 'code' => $pop->name, 'name' => $pop->code, 'lat' => $pop->lat, 'lng' => $pop->lng,
+                'detail' => $detail($pop, $assetFields),
+            ]),
+            ...$odcs->map(fn (Odc $odc) => [
+                'kind' => 'odc', 'id' => $odc->id, 'code' => $odc->code, 'name' => $odc->name, 'lat' => $odc->lat, 'lng' => $odc->lng,
+                'detail' => $detail($odc, $assetFields),
+            ]),
+            ...$odps->map(fn (Odp $odp) => [
+                'kind' => 'odp', 'id' => $odp->id, 'code' => $odp->code, 'name' => $odp->name, 'lat' => $odp->lat, 'lng' => $odp->lng,
+                'detail' => $detail($odp, $odpFields),
+            ]),
             ...$customers->map(fn (Customer $c) => [
                 'kind' => 'customer',
                 'id' => $c->id,
                 'code' => $c->name,
                 'name' => collect([$c->customer_code, $c->port?->odp ? "{$c->port->odp->code} port {$c->port->number}" : null])->filter()->implode(' · ') ?: null,
+                'detail' => $detail($c, $customerFields, ['name', 'customer_code', 'phone']),
                 // Customers without a location are found at their ODP.
                 'lat' => $c->lat ?? $c->port?->odp?->lat,
                 'lng' => $c->lng ?? $c->port?->odp?->lng,
+            ]),
+            ...$cables->map(fn (Cable $cable) => [
+                'kind' => 'cable',
+                'id' => $cable->id,
+                'code' => $cable->code ?: "Kabel #{$cable->id}",
+                'name' => $cable->type,
+                'detail' => $detail($cable, ['notes' => 'Catatan'], ['code']),
+                'lat' => ((float) $cable->min_lat + (float) $cable->max_lat) / 2,
+                'lng' => ((float) $cable->min_lng + (float) $cable->max_lng) / 2,
             ]),
         ]);
     }

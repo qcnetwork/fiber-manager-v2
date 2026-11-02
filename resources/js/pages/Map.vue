@@ -180,6 +180,8 @@ async function select(kind: MapItemKind, id: number, fly = false) {
             const cable = (await getJson<{ cable: Cable }>(route('cables.show', { cable: id }))).cable;
             if (!same) clearDetails();
             cableDetail.value = cable;
+            const middle = cable.path[Math.floor(cable.path.length / 2)];
+            if (fly && middle) mapRef.value?.flyTo(middle[0], middle[1]);
         } else if (kind === 'odp') {
             const odp = (await getJson<{ odp: Odp }>(route('odps.show', { odp: id }))).odp;
             if (!same) clearDetails();
@@ -525,9 +527,9 @@ function onMapClick(lat: number, lng: number) {
 // ---- Toolbar: search & my location
 const query = ref('');
 const searchResults = ref<
-    { kind: CableEndKind | 'customer'; id: number; code: string; name: string | null; lat: number | null; lng: number | null }[]
+    { kind: MapItemKind; id: number; code: string; name: string | null; detail: string | null; lat: number | null; lng: number | null }[]
 >([]);
-const kindLabels = { pop: 'POP', odc: 'ODC', odp: 'ODP', customer: 'PLG' };
+const kindLabels = { pop: 'POP', odc: 'ODC', odp: 'ODP', customer: 'PLG', cable: 'KBL' };
 // Pasted coordinates or a Google Maps link are a location, not a code to look up.
 const queryIsLocation = computed(() => !!parseCoordinates(query.value) || isUrl(query.value));
 const runSearch = useDebounceFn(async () => {
@@ -543,7 +545,7 @@ function nearestFromQuery() {
     nearestFromText(text);
 }
 
-function pickSearchResult(r: { kind: CableEndKind | 'customer'; id: number }) {
+function pickSearchResult(r: { kind: MapItemKind; id: number }) {
     query.value = '';
     searchResults.value = [];
     select(r.kind, r.id, true);
@@ -651,7 +653,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                                     v-model="query"
                                     type="search"
                                     enterkeyhint="search"
-                                    placeholder="ODC/ODP, pelanggan, koordinat, link Maps…"
+                                    placeholder="Kode, nama, alamat, catatan, koordinat, link Maps…"
                                     class="h-11 rounded-full bg-background pl-9 text-base shadow-lg md:h-10 md:rounded-md md:pl-8 md:text-sm md:shadow-sm"
                                     @keydown.enter="queryIsLocation && nearestFromQuery()"
                                 />
@@ -699,6 +701,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                                             <span v-if="r.kind === 'customer' && r.name" class="block truncate text-xs text-muted-foreground">{{
                                                 r.name
                                             }}</span>
+                                            <span v-if="r.detail" class="block truncate text-xs text-muted-foreground italic">{{ r.detail }}</span>
                                         </span>
                                     </button>
                                 </li>
