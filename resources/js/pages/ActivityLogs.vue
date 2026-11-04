@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { activityActions, activityTypes, type ActivityAction } from '@/lib/activity';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ChevronLeft, ChevronRight, X } from '@lucide/vue';
@@ -15,7 +16,7 @@ type Change = [unknown, unknown];
 interface Log {
     id: number;
     user_name: string | null;
-    action: 'created' | 'updated' | 'deleted' | 'moved' | 'imported';
+    action: ActivityAction;
     subject_type: string;
     subject_id: number | null;
     subject_label: string;
@@ -43,27 +44,8 @@ const props = defineProps<{
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Riwayat Aktivitas', href: '/activity' }];
 
-const types: Record<string, string> = {
-    pop: 'POP',
-    olt: 'OLT',
-    olt_port: 'Port OLT',
-    odc: 'ODC',
-    odp: 'ODP',
-    odp_port: 'Port ODP',
-    customer: 'Pelanggan',
-    cable: 'Kabel',
-    photo: 'Foto',
-    user: 'Pengguna',
-    import: 'Impor file',
-};
-
-const actions: Record<Log['action'], { label: string; class: string }> = {
-    created: { label: 'Tambah', class: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300' },
-    updated: { label: 'Ubah', class: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300' },
-    deleted: { label: 'Hapus', class: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' },
-    moved: { label: 'Pindah', class: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' },
-    imported: { label: 'Impor', class: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300' },
-};
+const types = activityTypes;
+const actions = activityActions;
 
 const fields: Record<string, string> = {
     code: 'Kode',

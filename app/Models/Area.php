@@ -62,6 +62,11 @@ class Area extends Model
         return $this->hasMany(Odp::class);
     }
 
+    public function customers(): HasMany
+    {
+        return $this->hasMany(Customer::class);
+    }
+
     public function activityAreaId(): ?int
     {
         return $this->id;
