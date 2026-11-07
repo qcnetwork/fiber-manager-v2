@@ -118,3 +118,11 @@ export const pickIcon = L.divIcon({
     iconSize: [28, 28],
     iconAnchor: [14, 28],
 });
+
+/** A drawn cable vertex attached to a POP/ODC/ODP: round and green, so connections stand out from plain bends. */
+export const linkedVertexIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:16px;height:16px;border-radius:9999px;background:#16a34a;border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4)"></div>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+});

@@ -430,52 +430,75 @@ async function nearestFromGps() {
 
 // ---- Cable drawing: the page owns the path so map clicks and the form share it
 const draft = ref<LatLng[] | null>(null);
-const draftFrom = ref<CableEndpoint | null>(null);
-const draftTo = ref<CableEndpoint | null>(null);
+/** Per path vertex: the POP/ODC/ODP it is attached to. The first and last are the cable ends, the rest are pass-through points. */
+const draftLinks = ref<(CableEndpoint | null)[]>([]);
+const draftFrom = computed(() => draftLinks.value[0] ?? null);
+const draftTo = computed(() => (draftLinks.value.length > 1 ? (draftLinks.value[draftLinks.value.length - 1] ?? null) : null));
+const draftStops = computed(() =>
+    draftLinks.value.flatMap((link, vertex) => (link && vertex > 0 && vertex < draftLinks.value.length - 1 ? [{ vertex, ...link }] : [])),
+);
 const editingCable = ref<Cable | null>(null);
 
 function startCable(cable: Cable | null = null) {
     closePanel();
     editingCable.value = cable;
     draft.value = cable ? cable.path.map(([lat, lng]) => [lat, lng] as LatLng) : [];
-    draftFrom.value = cable?.from && cable.from_type ? { type: cable.from_type, id: cable.from.id, code: cable.from.code } : null;
-    draftTo.value = cable?.to && cable.to_type ? { type: cable.to_type, id: cable.to.id, code: cable.to.code } : null;
+    draftLinks.value = draft.value.map(() => null);
+    for (const point of cable?.route ?? []) {
+        if (point.kind && point.asset) draftLinks.value[point.vertex] = { type: point.kind, id: point.asset.id, code: point.asset.code };
+    }
     formKey.value++;
     mode.value = 'cable';
 }
 
 function addCablePoint(lat: number, lng: number) {
     draft.value!.push([lat, lng]);
-    draftTo.value = null; // the line now continues past whatever it ended at
+    draftLinks.value.push(null);
 }
 
 /**
- * Clicking a POP/ODC/ODP while drawing attaches the cable end to it.
+ * The location and label of a POP/ODC/ODP a cable point attaches to (a POP is shown by its name; its code is the area code).
  */
-function attachCableEnd(kind: CableEndKind, id: number) {
+function linkTarget(kind: CableEndKind, id: number): { lat: number; lng: number; link: CableEndpoint } | null {
     const pop = kind === 'pop' ? pops.value.find((o) => o.id === id) : undefined;
     const asset = pop ?? (kind === 'odc' ? odcs.value : odps.value).find((o) => o.id === id);
-    if (!asset || !draft.value) return;
-
-    // A POP is shown by its name; its code is the area code.
-    const end = { type: kind, id, code: pop ? pop.name : asset.code };
-    draft.value.push([asset.lat, asset.lng]);
-    if (draft.value.length === 1) draftFrom.value = end;
-    else draftTo.value = end;
+    return asset ? { lat: asset.lat, lng: asset.lng, link: { type: kind, id, code: pop ? pop.name : asset.code } } : null;
 }
 
-function moveCablePoint(index: number, lat: number, lng: number) {
-    draft.value![index] = [lat, lng];
-    // Dragging an attached end off its asset detaches it.
-    if (index === 0) draftFrom.value = null;
-    if (index === draft.value!.length - 1) draftTo.value = null;
+/**
+ * Attaching a POP/ODC/ODP while drawing adds a vertex on it: the start, the end,
+ * or—once the line goes on past it—a point the cable passes through.
+ */
+function attachCablePoint(kind: CableEndKind, id: number) {
+    const target = linkTarget(kind, id);
+    if (!target || !draft.value) return;
+
+    // Attaching the asset the line already ends at again does nothing.
+    const lastLink = draftLinks.value[draftLinks.value.length - 1];
+    if (lastLink && lastLink.type === kind && lastLink.id === id) return;
+
+    draft.value.push([target.lat, target.lng]);
+    draftLinks.value.push(target.link);
+}
+
+/**
+ * A click near an asset while drawing, after the user chose to attach it or keep a plain point.
+ */
+function onDraftAdd(lat: number, lng: number, link: { kind: CableEndKind; id: number } | null) {
+    if (link) attachCablePoint(link.kind, link.id);
+    else addCablePoint(lat, lng);
+}
+
+function moveCablePoint(index: number, lat: number, lng: number, link: { kind: CableEndKind; id: number } | null) {
+    const target = link ? linkTarget(link.kind, link.id) : null;
+    // Dropped onto an asset the user chose to attach: snap onto it; anywhere else the point is plain.
+    draft.value![index] = target ? [target.lat, target.lng] : [lat, lng];
+    draftLinks.value[index] = target?.link ?? null;
 }
 
 function removeCablePoint(index: number) {
-    const last = draft.value!.length - 1;
     draft.value!.splice(index, 1);
-    if (index === 0) draftFrom.value = null;
-    if (index === last) draftTo.value = null;
+    draftLinks.value.splice(index, 1);
 }
 
 function undoCablePoint() {
@@ -484,8 +507,7 @@ function undoCablePoint() {
 
 function clearCable() {
     draft.value = [];
-    draftFrom.value = null;
-    draftTo.value = null;
+    draftLinks.value = [];
 }
 
 function onCableSaved() {
@@ -505,7 +527,7 @@ function onCableCancel() {
 
 function onMapSelect(kind: MapItemKind, id: number) {
     if (mode.value === 'cable') {
-        if (kind === 'pop' || kind === 'odc' || kind === 'odp') attachCableEnd(kind, id);
+        if (kind === 'pop' || kind === 'odc' || kind === 'odp') attachCablePoint(kind, id);
     } else if (mode.value !== 'customer-form') {
         select(kind, id);
     }
@@ -603,6 +625,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         :odps="odps"
                         :cables="cables"
                         :draft="mode === 'cable' ? draft : null"
+                        :draft-links="draftLinks.map(Boolean)"
                         :selected="selected"
                         :pick="mode === 'form' || mode === 'customer-form' || mode === 'pop-form' ? pick : null"
                         :nearest="mode === 'nearest' ? nearest : null"
@@ -617,6 +640,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         @click="onMapClick"
                         @pick-move="(lat, lng) => (pick = { lat, lng })"
                         @draft-move="moveCablePoint"
+                        @draft-add="onDraftAdd"
                         @draft-remove="removeCablePoint"
                     />
 
@@ -913,6 +937,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         :path="draft"
                         :from="draftFrom"
                         :to="draftTo"
+                        :stops="draftStops"
                         :areas="areas"
                         :can-choose-area="can.chooseArea"
                         :default-area-id="editingCable?.area_id ?? defaultAreaId"

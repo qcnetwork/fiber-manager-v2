@@ -46,6 +46,7 @@ class OdpRequest extends NetworkAssetRequest
     public function messages(): array
     {
         return [
+            ...parent::messages(),
             'odc_port.unique' => 'Port ODC ini sudah dipakai ODP lain.',
         ];
     }

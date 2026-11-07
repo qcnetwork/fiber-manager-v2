@@ -21,7 +21,7 @@ class OdpController extends Controller
 
     public function store(OdpRequest $request): RedirectResponse
     {
-        Odp::create($request->validated());
+        DB::transaction(fn () => $request->connectCables(Odp::create($request->assetData())));
 
         return back();
     }
@@ -29,13 +29,15 @@ class OdpController extends Controller
     public function update(OdpRequest $request, Odp $odp): RedirectResponse
     {
         DB::transaction(function () use ($request, $odp) {
-            $odp->update($request->validated());
+            $odp->update($request->assetData());
 
             if (! $odp->syncPorts()) {
                 throw ValidationException::withMessages([
                     'capacity' => 'Kapasitas tidak bisa dikurangi: port bernomor di atas '.$odp->capacity.' masih terpakai.',
                 ]);
             }
+
+            $request->connectCables($odp);
         });
 
         return back();

@@ -2,7 +2,7 @@
 import StatusBadge from '@/components/map/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { cableTypes, endLabel, formatLength } from '@/lib/cables';
-import type { Cable, CableEndKind } from '@/types';
+import type { Cable, CableEndKind, CableRoutePoint } from '@/types';
 import { Pencil, Trash2, X } from '@lucide/vue';
 import { computed } from 'vue';
 
@@ -20,10 +20,23 @@ const emit = defineEmits<{
 }>();
 
 const type = computed(() => cableTypes[props.cable.type]);
-const ends = computed(() => [
-    { label: 'Dari', kind: props.cable.from_type, asset: props.cable.from },
-    { label: 'Ke', kind: props.cable.to_type, asset: props.cable.to },
-]);
+
+/** Start, pass-through points and end; older responses without a route fall back to the two ends. */
+const route = computed<CableRoutePoint[]>(
+    () =>
+        props.cable.route ?? [
+            { role: 'from', kind: props.cable.from_type, asset: props.cable.from ?? null, vertex: 0, distance_m: 0 },
+            {
+                role: 'to',
+                kind: props.cable.to_type,
+                asset: props.cable.to ?? null,
+                vertex: props.cable.path.length - 1,
+                distance_m: props.cable.length_m,
+            },
+        ],
+);
+const viaCount = computed(() => route.value.filter((p) => p.role === 'via').length);
+const roleLabel = { from: 'Awal', via: 'Lewat', to: 'Ujung' };
 </script>
 
 <template>
@@ -55,20 +68,43 @@ const ends = computed(() => [
             </div>
         </div>
 
+        <div>
+            <div class="mb-2 flex items-baseline justify-between">
+                <h3 class="text-sm font-semibold">Rute kabel</h3>
+                <span class="text-xs text-muted-foreground">{{ viaCount ? `${viaCount} titik sambung` : 'tanpa titik sambung' }}</span>
+            </div>
+            <ol class="relative">
+                <li v-for="(point, i) in route" :key="`${point.role}-${point.vertex}`" class="relative flex gap-3 pb-1">
+                    <!-- Line down to the next point, with the leg length beside it. -->
+                    <div class="flex w-4 flex-col items-center">
+                        <span
+                            class="mt-1 block size-3 shrink-0 rounded-full border-2"
+                            :class="point.asset ? 'border-green-600 bg-green-600' : 'border-muted-foreground bg-background'"
+                        />
+                        <span v-if="i < route.length - 1" class="w-0.5 flex-1" :style="{ background: type.color }" />
+                    </div>
+                    <div class="min-w-0 flex-1 pb-2">
+                        <div class="flex items-baseline justify-between gap-2">
+                            <span class="text-xs text-muted-foreground">{{ roleLabel[point.role] }}</span>
+                            <span class="text-xs text-muted-foreground tabular-nums">{{ formatLength(point.distance_m) }}</span>
+                        </div>
+                        <button
+                            v-if="point.asset && point.kind"
+                            class="text-left text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                            @click="emit('selectAsset', point.kind, point.asset.id)"
+                        >
+                            {{ endLabel(point.kind, point.asset.code) }}
+                        </button>
+                        <span v-else class="text-sm text-muted-foreground">Titik bebas</span>
+                        <div v-if="i < route.length - 1" class="mt-1 text-xs text-muted-foreground">
+                            ↓ {{ formatLength(route[i + 1].distance_m - point.distance_m) }}
+                        </div>
+                    </div>
+                </li>
+            </ol>
+        </div>
+
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-            <template v-for="end in ends" :key="end.label">
-                <dt class="text-muted-foreground">{{ end.label }}</dt>
-                <dd>
-                    <button
-                        v-if="end.asset && end.kind"
-                        class="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                        @click="emit('selectAsset', end.kind, end.asset.id)"
-                    >
-                        {{ endLabel(end.kind, end.asset.code) }}
-                    </button>
-                    <span v-else class="text-muted-foreground">Titik bebas</span>
-                </dd>
-            </template>
             <dt class="text-muted-foreground">Titik jalur</dt>
             <dd>{{ cable.path.length }}</dd>
             <template v-if="cable.notes">

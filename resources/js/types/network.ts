@@ -241,6 +241,26 @@ export interface Cable extends CableLine {
     area?: Pick<Area, 'id' | 'code' | 'name'>;
     from?: CableEnd | null;
     to?: CableEnd | null;
+    /** Start, pass-through points and end, in order along the cable (only from the detail endpoint). */
+    route?: CableRoutePoint[];
+}
+
+/**
+ * A point along a cable's route; `asset` is null for an end that isn't attached to anything.
+ */
+export interface CableRoutePoint {
+    role: 'from' | 'via' | 'to';
+    kind: CableEndKind | null;
+    asset: { id: number; code: string } | null;
+    vertex: number;
+    distance_m: number;
+}
+
+/**
+ * A pass-through point of the cable being drawn.
+ */
+export interface CableStopDraft extends CableEndpoint {
+    vertex: number;
 }
 
 /**

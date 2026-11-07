@@ -51,4 +51,36 @@ class GeoService
             'maxLng' => $lng + $dLng,
         ];
     }
+
+    /**
+     * The point on a polyline closest to a coordinate: which segment (index of its first vertex), how far along it
+     * (0 = at that vertex, 1 = at the next one), and the distance in meters. Uses a flat projection around the
+     * coordinate, which is accurate at the tens-of-meters scale this is used for.
+     *
+     * @param  list<array{0: float, 1: float}>  $path
+     * @return array{segment: int, t: float, distance: float}
+     */
+    public static function nearestOnPath(float $lat, float $lng, array $path): array
+    {
+        $mPerDegLat = deg2rad(1) * self::EARTH_RADIUS_M;
+        $mPerDegLng = $mPerDegLat * cos(deg2rad($lat));
+        $project = fn (array $p) => [($p[1] - $lng) * $mPerDegLng, ($p[0] - $lat) * $mPerDegLat];
+
+        $best = ['segment' => 0, 't' => 0.0, 'distance' => INF];
+        for ($i = 0; $i < count($path) - 1; $i++) {
+            [$ax, $ay] = $project($path[$i]);
+            [$bx, $by] = $project($path[$i + 1]);
+            $dx = $bx - $ax;
+            $dy = $by - $ay;
+            $lengthSq = $dx * $dx + $dy * $dy;
+            // The coordinate is the origin of the projection.
+            $t = $lengthSq > 0 ? max(0.0, min(1.0, -($ax * $dx + $ay * $dy) / $lengthSq)) : 0.0;
+            $distance = hypot($ax + $t * $dx, $ay + $t * $dy);
+            if ($distance < $best['distance']) {
+                $best = ['segment' => $i, 't' => $t, 'distance' => $distance];
+            }
+        }
+
+        return $best;
+    }
 }
