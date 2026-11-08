@@ -62,7 +62,40 @@ let map: L.Map;
 let resizeObserver: ResizeObserver;
 const popLayer = L.layerGroup();
 const odcLayer = L.layerGroup();
-const odpLayer = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 50, showCoverageOnHover: false });
+// The "ODP" overlay holds either the clustered or the plain group; the "Kelompokkan ODP" toggle swaps them.
+const odpLayer = L.layerGroup();
+const odpClusterGroup = L.markerClusterGroup({ disableClusteringAtZoom: 17, maxClusterRadius: 50, showCoverageOnHover: false });
+const odpPlainGroup = L.layerGroup();
+/** Only a switch in the layer menu: on the map while ODPs are clustered, never holds markers. */
+const clusterToggle = L.layerGroup();
+const CLUSTER_KEY = 'map.clusterOdp';
+
+function readClusterPreference(): boolean {
+    try {
+        return localStorage.getItem(CLUSTER_KEY) !== '0';
+    } catch {
+        return true;
+    }
+}
+
+let clusterOdps = readClusterPreference();
+odpLayer.addLayer(clusterOdps ? odpClusterGroup : odpPlainGroup);
+
+function setClusterOdps(on: boolean) {
+    if (on === clusterOdps) return;
+    clusterOdps = on;
+    try {
+        localStorage.setItem(CLUSTER_KEY, on ? '1' : '0');
+    } catch {
+        // Private window or blocked storage: the choice just isn't remembered.
+    }
+    odpLayer.clearLayers();
+    odpLayer.addLayer(on ? odpClusterGroup : odpPlainGroup);
+    renderAssets();
+}
+
+const odpTarget = () => (clusterOdps ? odpClusterGroup : odpPlainGroup);
+
 const linkLayer = L.layerGroup();
 const cableLayer = L.layerGroup();
 // Canvas with a hit tolerance so thin cable lines are easy to tap on a phone.
@@ -84,7 +117,8 @@ const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.ch
 function renderAssets() {
     popLayer.clearLayers();
     odcLayer.clearLayers();
-    odpLayer.clearLayers();
+    odpClusterGroup.clearLayers();
+    odpPlainGroup.clearLayers();
     linkLayer.clearLayers();
 
     for (const pop of props.pops ?? []) {
@@ -118,7 +152,7 @@ function renderAssets() {
         L.marker([odp.lat, odp.lng], { icon: odpIcon(odp, isSelected('odp', odp.id)) })
             .bindTooltip(`<b>${odp.code}</b><br>Port ${odp.used_ports}/${odp.capacity} terpakai`, { direction: 'top', offset: [0, -8] })
             .on('click', (e) => onAssetClick(e, 'odp', odp.id))
-            .addTo(odpLayer);
+            .addTo(odpTarget());
 
         if (odp.odc_latlng) {
             L.polyline([odp.odc_latlng, [odp.lat, odp.lng]], {
@@ -419,9 +453,17 @@ onMounted(() => {
     }
     // Only pages that pass customers offer the layer (never the sales coverage page).
     if (props.customers) overlays.Pelanggan = customerLayer;
+    overlays['Kelompokkan ODP'] = clusterToggle;
+    if (clusterOdps) clusterToggle.addTo(map);
     L.control.layers(layers, overlays, { position: 'topright' }).addTo(map);
-    map.on('overlayadd', (e) => e.layer === customerLayer && emit('customersToggle', true));
-    map.on('overlayremove', (e) => e.layer === customerLayer && emit('customersToggle', false));
+    map.on('overlayadd', (e) => {
+        if (e.layer === customerLayer) emit('customersToggle', true);
+        if (e.layer === clusterToggle) setClusterOdps(true);
+    });
+    map.on('overlayremove', (e) => {
+        if (e.layer === customerLayer) emit('customersToggle', false);
+        if (e.layer === clusterToggle) setClusterOdps(false);
+    });
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
 
     map.on('moveend', emitBounds);
