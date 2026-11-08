@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { cableTypes, endLabel, formatLength } from '@/lib/cables';
 import { coreInfo, coreStatuses, type FiberColor } from '@/lib/cores';
 import type { Cable, CableCore, CableEndKind, CableRoutePoint } from '@/types';
-import { Link2, Pencil, Trash2, X } from '@lucide/vue';
+import { FileText, Link2, Pencil, Trash2, X } from '@lucide/vue';
 import { computed } from 'vue';
 
 const props = defineProps<{
@@ -24,7 +24,7 @@ const emit = defineEmits<{
 const type = computed(() => cableTypes[props.cable.type]);
 
 /** Start, pass-through points and end; older responses without a route fall back to the two ends. */
-const route = computed<CableRoutePoint[]>(
+const routePoints = computed<CableRoutePoint[]>(
     () =>
         props.cable.route ?? [
             { role: 'from', kind: props.cable.from_type, asset: props.cable.from ?? null, vertex: 0, distance_m: 0 },
@@ -37,7 +37,7 @@ const route = computed<CableRoutePoint[]>(
             },
         ],
 );
-const viaCount = computed(() => route.value.filter((p) => p.role === 'via').length);
+const viaCount = computed(() => routePoints.value.filter((p) => p.role === 'via').length);
 const roleLabel = { from: 'Awal', via: 'Lewat', to: 'Ujung' };
 
 // ---- Cores, grouped by tube
@@ -92,14 +92,14 @@ const coreCounts = computed(() => {
                 <span class="text-xs text-muted-foreground">{{ viaCount ? `${viaCount} titik sambung` : 'tanpa titik sambung' }}</span>
             </div>
             <ol class="relative">
-                <li v-for="(point, i) in route" :key="`${point.role}-${point.vertex}`" class="relative flex gap-3 pb-1">
+                <li v-for="(point, i) in routePoints" :key="`${point.role}-${point.vertex}`" class="relative flex gap-3 pb-1">
                     <!-- Line down to the next point, with the leg length beside it. -->
                     <div class="flex w-4 flex-col items-center">
                         <span
                             class="mt-1 block size-3 shrink-0 rounded-full border-2"
                             :class="point.asset ? 'border-green-600 bg-green-600' : 'border-muted-foreground bg-background'"
                         />
-                        <span v-if="i < route.length - 1" class="w-0.5 flex-1" :style="{ background: type.color }" />
+                        <span v-if="i < routePoints.length - 1" class="w-0.5 flex-1" :style="{ background: type.color }" />
                     </div>
                     <div class="min-w-0 flex-1 pb-2">
                         <div class="flex items-baseline justify-between gap-2">
@@ -114,8 +114,8 @@ const coreCounts = computed(() => {
                             {{ endLabel(point.kind, point.asset.code) }}
                         </button>
                         <span v-else class="text-sm text-muted-foreground">Titik bebas</span>
-                        <div v-if="i < route.length - 1" class="mt-1 text-xs text-muted-foreground">
-                            ↓ {{ formatLength(route[i + 1].distance_m - point.distance_m) }}
+                        <div v-if="i < routePoints.length - 1" class="mt-1 text-xs text-muted-foreground">
+                            ↓ {{ formatLength(routePoints[i + 1].distance_m - point.distance_m) }}
                         </div>
                     </div>
                 </li>
@@ -176,6 +176,9 @@ const coreCounts = computed(() => {
 
         <div class="flex flex-wrap gap-2">
             <Button v-if="canEdit" variant="outline" size="sm" @click="emit('edit')"><Pencil class="size-4" /> Edit jalur</Button>
+            <Button as="a" :href="route('splice-sheet', { kind: 'cable', id: cable.id })" target="_blank" variant="outline" size="sm"
+                ><FileText class="size-4" /> Splice sheet</Button
+            >
             <Button v-if="canDelete" variant="destructive" size="sm" @click="emit('delete')"><Trash2 class="size-4" /> Hapus</Button>
         </div>
     </div>

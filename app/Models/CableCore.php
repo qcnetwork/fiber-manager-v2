@@ -88,10 +88,40 @@ class CableCore extends Model
         $segments = [...array_map(fn ($step) => $step[1], $backward), $this, ...array_map(fn ($step) => $step[1], $forward)];
         $joins = [...array_map(fn ($step) => $step[0], $backward), ...array_map(fn ($step) => $step[0], $forward)];
 
+        $segments = array_map(fn (CableCore $core) => $core->describe(), $segments);
+        $joins = array_map(fn (CoreSplice $splice) => $splice->describeLocation(), $joins);
+
         return [
-            'segments' => array_map(fn (CableCore $core) => $core->describe(), $segments),
-            'joins' => array_map(fn (CoreSplice $splice) => $splice->describeLocation(), $joins),
+            'segments' => $segments,
+            'joins' => $joins,
+            'start' => self::outerEnd($segments[0], $joins[0] ?? null, 'from'),
+            'end' => self::outerEnd($segments[count($segments) - 1], $joins[count($joins) - 1] ?? null, 'to'),
+            // Every core on the path, so callers tracing many cores can skip ones already covered.
+            'core_ids' => array_column($segments, 'core_id'),
         ];
+    }
+
+    /**
+     * Where the path leaves an outer segment: the end of its cable that isn't the splice next to it.
+     * Without any splice, a lone core simply runs from its cable's start to its end.
+     *
+     * @param  array<string, mixed>  $segment
+     * @param  array<string, mixed>|null  $join
+     * @return array{kind: string, id: int, code: string}|null
+     */
+    private static function outerEnd(array $segment, ?array $join, string $fallback): ?array
+    {
+        $cable = $segment['cable'];
+        if (! $join) {
+            return $cable[$fallback];
+        }
+        foreach ([$cable['from'], $cable['to']] as $end) {
+            if ($end && ! ($end['kind'] === $join['kind'] && $end['id'] === $join['id'])) {
+                return $end;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -101,15 +131,27 @@ class CableCore extends Model
      */
     public function describe(): array
     {
-        $cable = Cable::withoutGlobalScopes()->with(['from', 'to'])->find($this->cable_id);
-        $end = fn (?Model $asset, ?string $kind) => $asset ? ['kind' => $kind, 'id' => $asset->id, 'code' => $asset instanceof Area ? $asset->name : $asset->code] : null;
-
         return [
             'core_id' => $this->id,
             'number' => $this->number,
             'status' => $this->status,
             'notes' => $this->notes,
-            'cable' => [
+            'cable' => self::describeCable($this->cable_id),
+        ];
+    }
+
+    /**
+     * A cable with its ends; remembered for the request, since a splice sheet traces many cores of few cables.
+     *
+     * @return array<string, mixed>
+     */
+    private static function describeCable(int $cableId): array
+    {
+        return once(function () use ($cableId) {
+            $cable = Cable::withoutGlobalScopes()->with(['from', 'to'])->find($cableId);
+            $end = fn (?Model $asset, ?string $kind) => $asset ? ['kind' => $kind, 'id' => $asset->id, 'code' => $asset instanceof Area ? $asset->name : $asset->code] : null;
+
+            return [
                 'id' => $cable->id,
                 'code' => $cable->code,
                 'type' => $cable->type,
@@ -117,8 +159,8 @@ class CableCore extends Model
                 'tube_size' => $cable->tube_size,
                 'from' => $end($cable->from, $cable->from_type),
                 'to' => $end($cable->to, $cable->to_type),
-            ],
-        ];
+            ];
+        });
     }
 
     /**

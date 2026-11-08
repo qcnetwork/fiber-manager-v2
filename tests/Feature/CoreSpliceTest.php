@@ -143,6 +143,52 @@ class CoreSpliceTest extends TestCase
         $this->assertTrue($this->feeder->fresh()->forceFill(['cores' => 12])->syncCores());
     }
 
+    public function test_splice_sheets_trace_every_core_from_start_to_end()
+    {
+        // ODC → feeder core 5 → JB-01 → distribution core 3 → ODP → drop core 1 → (free end)
+        $drop = Cable::create([
+            'code' => 'DRP-01', 'type' => 'drop', 'cores' => 1,
+            'from_type' => 'odp', 'from_id' => $this->odp->id,
+            'path' => [[-6.2, 106.802], [-6.2005, 106.802]],
+        ]);
+        $this->splice('joint', $this->joint->id, [[$this->core($this->feeder, 5), $this->core($this->distribution, 3)]])->assertSessionHasNoErrors();
+        $this->splice('odp', $this->odp->id, [[$this->core($this->distribution, 3), $this->core($drop, 1)]])->assertSessionHasNoErrors();
+
+        // At the joint: one row, carrying the whole path across three cables.
+        $this->get("/splice-sheet/joint/{$this->joint->id}")->assertOk()->assertInertia(fn ($page) => $page
+            ->component('SpliceSheet')
+            ->where('sheet.title', 'JB-01')
+            ->where('sheet.subtitle', 'Joint box')
+            ->has('rows', 1)
+            ->where('rows.0.a.cable.code', 'FDR-01')
+            ->where('rows.0.b.cable.code', 'DST-01')
+            ->has('rows.0.trace.segments', 3)
+            ->where('cables', fn ($cables) => collect($cables)->pluck('spliced_here', 'code')->all() === ['DST-01' => 1, 'FDR-01' => 1]));
+
+        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 5)->id.'/trace')->json();
+        $ends = [$trace['start']['code'] ?? null, $trace['end']['code'] ?? null];
+        // The drop's far end is free, so one side ends at the ODC and the other has no asset.
+        $this->assertContains($this->odc->code, $ends);
+        $this->assertContains(null, $ends);
+
+        // The feeder's sheet lists all 24 cores; unspliced ones are their own one-cable path.
+        $this->get("/splice-sheet/cable/{$this->feeder->id}")->assertOk()->assertInertia(fn ($page) => $page
+            ->has('rows', 24)
+            ->has('rows.4.trace.segments', 3)
+            ->has('rows.0.trace.segments', 1)
+            ->where('rows.0.trace.start.code', $this->odc->code)
+            ->where('rows.0.trace.end.code', 'JB-01'));
+    }
+
+    public function test_splice_sheet_rejects_unknown_kinds_and_other_areas()
+    {
+        $this->get('/splice-sheet/customer/1')->assertNotFound();
+
+        $foreign = SpliceBox::factory()->create();
+        SpliceBox::withoutGlobalScopes()->whereKey($foreign->id)->update(['area_id' => Area::factory()->create()->id]);
+        $this->get("/splice-sheet/joint/{$foreign->id}")->assertNotFound();
+    }
+
     public function test_cable_detail_shows_how_often_each_core_is_spliced()
     {
         $this->splice('joint', $this->joint->id, [[$this->core($this->feeder, 1), $this->core($this->distribution, 1)]])->assertSessionHasNoErrors();

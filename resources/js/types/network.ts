@@ -321,6 +321,10 @@ export interface CoreTrace {
         cable: { id: number; code: string | null; type: CableType; cores: number; tube_size: number; from: TraceEnd | null; to: TraceEnd | null };
     }[];
     joins: { splice_id: number; kind: CableEndKind; id: number; code: string | null; notes: string | null }[];
+    /** Where the path begins and ends: the outer cable ends (null when that cable end isn't attached to an asset). */
+    start: TraceEnd | null;
+    end: TraceEnd | null;
+    core_ids: number[];
 }
 
 /**

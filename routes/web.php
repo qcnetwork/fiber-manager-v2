@@ -19,6 +19,7 @@ use App\Http\Controllers\OltPortController;
 use App\Http\Controllers\PhotoController;
 use App\Http\Controllers\PopController;
 use App\Http\Controllers\SpliceBoxController;
+use App\Http\Controllers\SpliceSheetController;
 use App\Http\Middleware\EnsureNotSales;
 use App\Http\Middleware\EnsureSuperAdmin;
 use Illuminate\Support\Facades\Route;
@@ -66,6 +67,7 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::get('splices', [CoreSpliceController::class, 'index'])->name('splices.index');
     Route::post('splices', [CoreSpliceController::class, 'store'])->name('splices.store');
     Route::delete('splices/{splice}', [CoreSpliceController::class, 'destroy'])->name('splices.destroy');
+    Route::get('splice-sheet/{kind}/{id}', [SpliceSheetController::class, 'show'])->whereNumber('id')->name('splice-sheet');
     Route::apiResource('cables', CableController::class)->except('index');
     Route::post('photos', [PhotoController::class, 'store'])->name('photos.store');
     Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->name('photos.destroy');

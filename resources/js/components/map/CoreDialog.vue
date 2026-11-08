@@ -46,19 +46,6 @@ watch(
 type Segment = CoreTrace['segments'][number];
 const segmentName = (s: Segment) => s.cable.code ?? `Kabel ${cableTypes[s.cable.type]?.label ?? ''} #${s.cable.id}`;
 
-/**
- * The outer ends of the path: the cable end of the first/last segment that isn't where it is spliced.
- */
-function outerEnd(index: number): { kind: CableEndKind; id: number; code: string } | null {
-    const t = trace.value;
-    if (!t) return null;
-    const segment = t.segments[index];
-    const join = index === 0 ? t.joins[0] : t.joins[t.joins.length - 1];
-    const ends = [segment.cable.from, segment.cable.to].filter((e) => !!e);
-    if (!join) return index === 0 ? segment.cable.from : segment.cable.to;
-    return ends.find((e) => !(e!.kind === join.kind && e!.id === join.id)) ?? null;
-}
-
 const form = useForm({ status: 'kosong' as CoreStatus, notes: '' });
 
 watch(
@@ -130,13 +117,13 @@ function submit() {
                         Core ini belum disambung ke core kabel lain. Sambungan dibuat di panel Joint/Roset, ODC atau ODP.
                     </p>
                     <ol v-else-if="trace" class="rounded-md border p-2 text-sm">
-                        <li v-if="outerEnd(0)" class="pb-1 text-xs text-muted-foreground">
+                        <li v-if="trace.start" class="pb-1 text-xs text-muted-foreground">
                             Mulai:
                             <button
                                 class="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                                @click="emit('selectAsset', outerEnd(0)!.kind, outerEnd(0)!.id)"
+                                @click="emit('selectAsset', trace.start!.kind, trace.start!.id)"
                             >
-                                {{ endLabel(outerEnd(0)!.kind, outerEnd(0)!.code) }}
+                                {{ endLabel(trace.start!.kind, trace.start!.code) }}
                             </button>
                         </li>
                         <template v-for="(segment, i) in trace.segments" :key="segment.core_id">
@@ -167,13 +154,13 @@ function submit() {
                                 <template v-if="trace.joins[i].notes"> ({{ trace.joins[i].notes }})</template>
                             </li>
                         </template>
-                        <li v-if="outerEnd(trace.segments.length - 1)" class="pt-1 text-xs text-muted-foreground">
+                        <li v-if="trace.end" class="pt-1 text-xs text-muted-foreground">
                             Selesai:
                             <button
                                 class="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                                @click="emit('selectAsset', outerEnd(trace.segments.length - 1)!.kind, outerEnd(trace.segments.length - 1)!.id)"
+                                @click="emit('selectAsset', trace.end!.kind, trace.end!.id)"
                             >
-                                {{ endLabel(outerEnd(trace.segments.length - 1)!.kind, outerEnd(trace.segments.length - 1)!.code) }}
+                                {{ endLabel(trace.end!.kind, trace.end!.code) }}
                             </button>
                         </li>
                     </ol>

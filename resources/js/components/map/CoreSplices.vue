@@ -9,7 +9,7 @@ import { coreInfo } from '@/lib/cores';
 import { getJson } from '@/lib/http';
 import type { CableEndKind, SpliceData } from '@/types';
 import { router } from '@inertiajs/vue3';
-import { LoaderCircle, Plus, Trash2 } from '@lucide/vue';
+import { FileText, LoaderCircle, Plus, Trash2 } from '@lucide/vue';
 import { computed, onMounted, ref, watch } from 'vue';
 
 /**
@@ -133,9 +133,14 @@ function remove(spliceId: number) {
     <div>
         <div class="mb-2 flex items-center justify-between">
             <h3 class="text-sm font-semibold">Sambungan core ({{ data?.splices.length ?? 0 }})</h3>
-            <Button v-if="canEdit && data && data.cables.length && !adding" variant="outline" size="sm" @click="startAdding">
-                <Plus class="size-4" /> Sambung
-            </Button>
+            <div class="flex gap-1.5">
+                <Button v-if="data?.splices.length" as="a" :href="route('splice-sheet', { kind, id })" target="_blank" variant="outline" size="sm">
+                    <FileText class="size-4" /> Splice sheet
+                </Button>
+                <Button v-if="canEdit && data && data.cables.length && !adding" variant="outline" size="sm" @click="startAdding">
+                    <Plus class="size-4" /> Sambung
+                </Button>
+            </div>
         </div>
 
         <div v-if="!data" class="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle class="size-4 animate-spin" /> Memuat…</div>
