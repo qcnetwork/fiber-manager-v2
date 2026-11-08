@@ -28,7 +28,7 @@ class CableController extends Controller
             'lng' => $asset->lng,
         ] : null;
 
-        $spliceCounts = CableCore::spliceCounts($cable->coreRows->modelKeys());
+        $connectionCounts = CableCore::connectionCounts($cable->coreRows->modelKeys());
 
         return response()->json(['cable' => [
             ...Arr::except($cable->toArray(), ['stops', 'core_rows']),
@@ -37,7 +37,7 @@ class CableController extends Controller
             'route' => $cable->route(),
             'core_list' => $cable->coreRows->map(fn (CableCore $core) => [
                 ...$core->only('id', 'number', 'status', 'notes'),
-                'splices' => $spliceCounts[$core->id] ?? 0,
+                'splices' => $connectionCounts[$core->id] ?? 0,
             ])->values(),
         ]]);
     }

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cableTypes } from '@/lib/cables';
-import { coreInfo } from '@/lib/cores';
+import { coreInfo, terminationLabel } from '@/lib/cores';
 import { getJson } from '@/lib/http';
 import type { CableEndKind, SpliceData } from '@/types';
 import { router } from '@inertiajs/vue3';
@@ -23,7 +23,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     selectCable: [id: number];
+    /** Terminations changed: the ODP panel shows them on its ports. */
+    changed: [];
 }>();
+
+const toCustomer = (name: string | null | undefined) => (name ? { name } : null);
 
 const data = ref<SpliceData | null>(null);
 async function load() {
@@ -126,6 +130,75 @@ function save() {
 function remove(spliceId: number) {
     if (!confirm('Hapus sambungan core ini?')) return;
     router.delete(route('splices.destroy', { splice: spliceId }), { preserveScroll: true, preserveState: true, onSuccess: load });
+}
+
+// ---- ODP only: a core ending on a splitter input or straight on an output port
+const terminating = ref(false);
+const termForm = ref({ cable: null as number | null, core: null as number | null, target: '' as string, notes: '' });
+const termError = ref('');
+
+function startTerminating() {
+    termForm.value = { cable: data.value?.cables[0]?.id ?? null, core: null, target: targets.value.find((t) => !t.taken)?.value ?? '', notes: '' };
+    termError.value = '';
+    terminating.value = true;
+}
+const freeTerm = computed(() => freeCores(termForm.value.cable));
+watch(
+    () => termForm.value.cable,
+    () => (termForm.value.core = freeTerm.value[0]?.number ?? null),
+);
+
+/** Splitter inputs and output ports to end a core on; ones already holding a core are shown but disabled. */
+const targets = computed(() => {
+    const odp = data.value?.odp;
+    if (!odp) return [];
+    const taken = new Set((data.value?.terminations ?? []).map((t) => `${t.kind}:${t.port}`));
+    const inputs = Array.from({ length: odp.max_inputs }, (_, i) => ({
+        value: `input:${i + 1}`,
+        label: `Input splitter ${i + 1}${odp.splitter_ratio && i === 0 ? ` (${odp.splitter_ratio})` : ''}`,
+        taken: taken.has(`input:${i + 1}`),
+    }));
+    const outputs = odp.ports.map((p) => ({
+        value: `output:${p.number}`,
+        label: `Port ${p.number}${p.customer ? ` · ${p.customer}` : p.status !== 'kosong' ? ` · ${p.status}` : ''}`,
+        taken: taken.has(`output:${p.number}`),
+    }));
+    return [...inputs, ...outputs];
+});
+
+function saveTermination() {
+    const core = freeTerm.value.find((c) => c.number === termForm.value.core);
+    const [kind, port] = termForm.value.target.split(':');
+    if (!core || !kind) return;
+    saving.value = true;
+    termError.value = '';
+    router.post(
+        route('terminations.store', { odp: props.id }),
+        { core_id: core.id, kind, port: Number(port), notes: termForm.value.notes || null },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                terminating.value = false;
+                load();
+                emit('changed');
+            },
+            onError: (errors) => (termError.value = Object.values(errors)[0] ?? 'Gagal menyimpan.'),
+            onFinish: () => (saving.value = false),
+        },
+    );
+}
+
+function removeTermination(id: number) {
+    if (!confirm('Lepas core ini dari ODP?')) return;
+    router.delete(route('terminations.destroy', { termination: id }), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            load();
+            emit('changed');
+        },
+    });
 }
 </script>
 
@@ -244,6 +317,111 @@ function remove(spliceId: number) {
                 </li>
             </ul>
             <p v-else-if="data.cables.length && !adding" class="text-sm text-muted-foreground">Belum ada core yang disambung di sini.</p>
+
+            <!-- ODP: cores ending on the splitter input or an output port -->
+            <div v-if="data.odp" class="mt-4">
+                <div class="mb-2 flex items-center justify-between">
+                    <h3 class="text-sm font-semibold">Core ke input/output ODP ({{ data.terminations.length }})</h3>
+                    <Button v-if="canEdit && data.cables.length && !terminating" variant="outline" size="sm" @click="startTerminating">
+                        <Plus class="size-4" /> Sambung ke ODP
+                    </Button>
+                </div>
+
+                <div v-if="terminating" class="mb-3 flex flex-col gap-3 rounded-md border bg-muted/40 p-3">
+                    <div class="grid grid-cols-[1fr_auto] gap-2">
+                        <div class="grid gap-1">
+                            <Label class="text-xs">Kabel</Label>
+                            <NativeSelect v-model.number="termForm.cable">
+                                <option v-for="c in data.cables" :key="c.id" :value="c.id">{{ cableName(c) }} ({{ c.cores }} core)</option>
+                            </NativeSelect>
+                        </div>
+                        <div class="grid gap-1">
+                            <Label class="text-xs">Core</Label>
+                            <NativeSelect v-model.number="termForm.core" class="w-28">
+                                <option v-for="c in freeTerm" :key="c.id" :value="c.number">{{ coreText(termForm.cable!, c.number) }}</option>
+                            </NativeSelect>
+                        </div>
+                    </div>
+                    <div class="grid gap-1">
+                        <Label class="text-xs">Disambung ke</Label>
+                        <NativeSelect v-model="termForm.target">
+                            <optgroup label="Input (masuk ke splitter)">
+                                <option
+                                    v-for="t in targets.filter((t) => t.value.startsWith('input'))"
+                                    :key="t.value"
+                                    :value="t.value"
+                                    :disabled="t.taken"
+                                >
+                                    {{ t.label }}{{ t.taken ? ' — sudah dipakai' : '' }}
+                                </option>
+                            </optgroup>
+                            <optgroup label="Output (langsung ke port)">
+                                <option
+                                    v-for="t in targets.filter((t) => t.value.startsWith('output'))"
+                                    :key="t.value"
+                                    :value="t.value"
+                                    :disabled="t.taken"
+                                >
+                                    {{ t.label }}{{ t.taken ? ' — sudah dipakai' : '' }}
+                                </option>
+                            </optgroup>
+                        </NativeSelect>
+                    </div>
+                    <div class="grid gap-1">
+                        <Label class="text-xs">Catatan (opsional)</Label>
+                        <Input v-model="termForm.notes" />
+                    </div>
+                    <InputError :message="termError" />
+                    <div class="flex gap-2">
+                        <Button size="sm" :disabled="saving || !termForm.core || !termForm.target" @click="saveTermination">
+                            <LoaderCircle v-if="saving" class="size-4 animate-spin" /> Simpan
+                        </Button>
+                        <Button size="sm" variant="outline" @click="terminating = false">Batal</Button>
+                    </div>
+                </div>
+
+                <ul v-if="data.terminations.length" class="divide-y rounded-md border text-sm">
+                    <li v-for="t in data.terminations" :key="t.id" class="flex items-center gap-2 px-2 py-1.5">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-x-1.5">
+                                <button
+                                    class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                    @click="emit('selectCable', t.core.cable_id)"
+                                >
+                                    {{ cableName(cableById.get(t.core.cable_id)) }}
+                                </button>
+                                <span
+                                    v-if="coreColor(t.core.cable_id, t.core.number)"
+                                    class="core-dot size-3"
+                                    :class="coreColor(t.core.cable_id, t.core.number)!.striped && 'is-striped'"
+                                    :style="{ '--c': coreColor(t.core.cable_id, t.core.number)!.color.hex }"
+                                />
+                                <span class="tabular-nums">{{ coreText(t.core.cable_id, t.core.number) }}</span>
+                                <span class="text-muted-foreground">→</span>
+                                <span class="font-medium">
+                                    {{
+                                        terminationLabel(
+                                            {
+                                                ...t,
+                                                customer:
+                                                    t.kind === 'output'
+                                                        ? toCustomer(data.odp.ports.find((p) => p.number === t.port)?.customer)
+                                                        : null,
+                                            },
+                                            false,
+                                        )
+                                    }}
+                                </span>
+                            </div>
+                            <div v-if="t.notes" class="text-xs text-muted-foreground">{{ t.notes }}</div>
+                        </div>
+                        <Button v-if="canEdit" variant="ghost" size="icon" class="size-7" title="Lepas dari ODP" @click="removeTermination(t.id)">
+                            <Trash2 class="size-3.5" />
+                        </Button>
+                    </li>
+                </ul>
+                <p v-else-if="!terminating" class="text-sm text-muted-foreground">Belum ada core yang masuk ke splitter atau port ODP ini.</p>
+            </div>
         </template>
     </div>
 </template>

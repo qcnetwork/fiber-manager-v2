@@ -2,8 +2,8 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cableTypes, endLabel } from '@/lib/cables';
-import { coreInfo, coreStatuses } from '@/lib/cores';
-import type { CableType, CoreTrace } from '@/types';
+import { coreInfo, coreStatuses, terminationLabel } from '@/lib/cores';
+import type { CableType, CoreTrace, TraceTermination } from '@/types';
 import { Head, Link } from '@inertiajs/vue3';
 import { ArrowLeft, Printer } from '@lucide/vue';
 import { computed, ref } from 'vue';
@@ -12,6 +12,7 @@ type Segment = CoreTrace['segments'][number];
 
 interface Row {
     splice_id: number | null;
+    termination: TraceTermination | null;
     notes: string | null;
     a: Segment;
     b: Segment | null;
@@ -124,7 +125,7 @@ function printSheet() {
                             <template v-else>
                                 <th class="px-2 py-1.5">Kabel A · core</th>
                                 <th class="px-2 py-1.5"></th>
-                                <th class="px-2 py-1.5">Kabel B · core</th>
+                                <th class="px-2 py-1.5">Kabel B · core / ODP</th>
                             </template>
                             <th class="px-2 py-1.5">Mulai</th>
                             <th class="px-2 py-1.5">Jalur core</th>
@@ -183,11 +184,17 @@ function printSheet() {
                                             <span class="text-muted-foreground">{{ color(row.b).color.name }}</span>
                                         </span>
                                     </template>
+                                    <b v-else-if="row.termination">{{ terminationLabel(row.termination, false) }}</b>
                                 </td>
                             </template>
 
-                            <td class="px-2 py-1.5 font-medium whitespace-nowrap">
-                                {{ row.trace.start ? endLabel(row.trace.start.kind, row.trace.start.code) : '—' }}
+                            <td class="px-2 py-1.5 font-medium">
+                                <span class="whitespace-nowrap">{{
+                                    row.trace.start ? endLabel(row.trace.start.kind, row.trace.start.code) : '—'
+                                }}</span>
+                                <div v-if="row.trace.start_termination" class="text-xs font-normal">
+                                    {{ terminationLabel(row.trace.start_termination, row.trace.start_termination.odp?.id !== row.trace.start?.id) }}
+                                </div>
                             </td>
 
                             <!-- The full path: cable/core, splice point, cable/core, … -->
@@ -218,8 +225,11 @@ function printSheet() {
                                 </span>
                             </td>
 
-                            <td class="px-2 py-1.5 font-medium whitespace-nowrap">
-                                {{ row.trace.end ? endLabel(row.trace.end.kind, row.trace.end.code) : '—' }}
+                            <td class="px-2 py-1.5 font-medium">
+                                <span class="whitespace-nowrap">{{ row.trace.end ? endLabel(row.trace.end.kind, row.trace.end.code) : '—' }}</span>
+                                <div v-if="row.trace.end_termination" class="text-xs font-normal">
+                                    {{ terminationLabel(row.trace.end_termination, row.trace.end_termination.odp?.id !== row.trace.end?.id) }}
+                                </div>
                             </td>
                             <td v-if="!isCable" class="px-2 py-1.5 text-muted-foreground">{{ row.notes ?? '' }}</td>
                         </tr>

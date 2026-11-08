@@ -60,3 +60,13 @@ export const coreStatuses = {
 
 /** Cores per tube to choose from in the cable form. */
 export const tubeSizes = [1, 2, 4, 6, 8, 12, 24];
+
+/** "ODP-07 · Input 1" / "ODP-07 · Port 3 → Budi" for a core ending at an ODP. */
+export function terminationLabel(
+    t: { kind: string; port: number; odp?: { code: string } | null; customer?: { name: string } | null },
+    withOdp = true,
+): string {
+    const where = t.kind === 'input' ? `Input splitter ${t.port}` : `Port ${t.port}`;
+    const customer = t.kind === 'output' && t.customer ? ` → ${t.customer.name}` : '';
+    return `${withOdp && t.odp ? `${t.odp.code} · ` : ''}${where}${customer}`;
+}

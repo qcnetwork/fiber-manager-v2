@@ -132,6 +132,14 @@ export interface Odp extends AssetFields {
     pole_number: string | null;
     odc?: { id: number; code: string; name: string | null } | null;
     ports?: OdpPort[];
+    /** Cores ending on the splitter inputs / output ports (detail only). */
+    core_terminations?: {
+        kind: TerminationKind;
+        port: number;
+        core_id: number;
+        number: number;
+        cable: { id: number; code: string | null; type: CableType; cores: number; tube_size: number } | null;
+    }[];
 }
 
 export type SpliceBoxType = 'joint_box' | 'roset';
@@ -289,6 +297,20 @@ export interface CableCore {
 /** Cables at a splice location with their cores, and the splices made there. */
 export interface SpliceData {
     max_splices: number;
+    /** Only at an ODP: its ports and splitter, for ending cores on an input or output port. */
+    odp: {
+        capacity: number;
+        splitter_ratio: string | null;
+        max_inputs: number;
+        ports: { number: number; status: PortStatus; customer: string | null }[];
+    } | null;
+    terminations: {
+        id: number;
+        kind: TerminationKind;
+        port: number;
+        notes: string | null;
+        core: { core_id: number; cable_id: number; number: number };
+    }[];
     cables: {
         id: number;
         code: string | null;
@@ -324,7 +346,23 @@ export interface CoreTrace {
     /** Where the path begins and ends: the outer cable ends (null when that cable end isn't attached to an asset). */
     start: TraceEnd | null;
     end: TraceEnd | null;
+    /** Where the path really ends inside an ODP, when the outer core is terminated there. */
+    start_termination: TraceTermination | null;
+    end_termination: TraceTermination | null;
     core_ids: number[];
+}
+
+export type TerminationKind = 'input' | 'output';
+
+/** A core ending at an ODP: on a splitter input or straight on an output port (and its customer). */
+export interface TraceTermination {
+    termination_id: number;
+    core_id: number;
+    odp: { id: number; code: string; splitter_ratio: string | null } | null;
+    kind: TerminationKind;
+    port: number;
+    customer: { id: number; name: string } | null;
+    notes: string | null;
 }
 
 /**

@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\CableController;
 use App\Http\Controllers\CableCoreController;
 use App\Http\Controllers\CoreSpliceController;
+use App\Http\Controllers\CoreTerminationController;
 use App\Http\Controllers\CoverageController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
@@ -68,6 +69,8 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::post('splices', [CoreSpliceController::class, 'store'])->name('splices.store');
     Route::delete('splices/{splice}', [CoreSpliceController::class, 'destroy'])->name('splices.destroy');
     Route::get('splice-sheet/{kind}/{id}', [SpliceSheetController::class, 'show'])->whereNumber('id')->name('splice-sheet');
+    Route::post('odps/{odp}/terminations', [CoreTerminationController::class, 'store'])->name('terminations.store');
+    Route::delete('terminations/{termination}', [CoreTerminationController::class, 'destroy'])->name('terminations.destroy');
     Route::apiResource('cables', CableController::class)->except('index');
     Route::post('photos', [PhotoController::class, 'store'])->name('photos.store');
     Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->name('photos.destroy');

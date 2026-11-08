@@ -7,6 +7,8 @@ use App\Models\Area;
 use App\Models\Cable;
 use App\Models\CableCore;
 use App\Models\CoreSplice;
+use App\Models\CoreTermination;
+use App\Models\Odp;
 use App\Models\SpliceBox;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Inertia\Inertia;
@@ -34,17 +36,30 @@ class SpliceSheetController extends Controller
         $location = Relation::getMorphedModel($kind)::findOrFail($id);
 
         $splices = CoreSplice::where('location_type', $kind)->where('location_id', $id)->with(['coreA', 'coreB'])->get();
+        // At an ODP, cores ending on a splitter input or output port are rows too.
+        $terminations = $location instanceof Odp ? CoreTermination::where('odp_id', $id)->with('core')->get() : collect();
         $cables = Cable::connectedTo($location)->orderBy('code')->get(['id', 'code', 'type', 'cores', 'tube_size']);
-        $splicedPerCable = $splices->flatMap(fn (CoreSplice $s) => [$s->coreA, $s->coreB])->countBy('cable_id');
+        $splicedPerCable = $splices->flatMap(fn (CoreSplice $s) => [$s->coreA, $s->coreB])
+            ->merge($terminations->pluck('core')->all())
+            ->countBy('cable_id');
 
-        $rows = $splices
+        $rows = $splices->toBase()
             ->map(fn (CoreSplice $s) => [
                 'splice_id' => $s->id,
+                'termination' => null,
                 'notes' => $s->notes,
                 'a' => $s->coreA->describe(),
                 'b' => $s->coreB->describe(),
                 'trace' => $s->coreA->trace(),
             ])
+            ->merge($terminations->toBase()->map(fn (CoreTermination $t) => [
+                'splice_id' => null,
+                'termination' => $t->describe(),
+                'notes' => $t->notes,
+                'a' => $t->core->describe(),
+                'b' => null,
+                'trace' => $t->core->trace(),
+            ]))
             // Grouped by the first cable, in core order, like a paper splice sheet.
             ->sortBy(fn (array $row) => sprintf('%s|%05d', $row['a']['cable']['code'] ?? '~'.$row['a']['cable']['id'], $row['a']['number']))
             ->values();
@@ -90,6 +105,7 @@ class SpliceSheetController extends Controller
             'cables' => [[...$cable->only('id', 'code', 'type', 'cores', 'tube_size'), 'spliced_here' => 0]],
             'rows' => $cable->coreRows->map(fn (CableCore $core) => [
                 'splice_id' => null,
+                'termination' => null,
                 'notes' => null,
                 'a' => $core->describe(),
                 'b' => null,

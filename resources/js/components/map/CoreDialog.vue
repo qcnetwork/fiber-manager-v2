@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cableTypes, endLabel } from '@/lib/cables';
-import { coreInfo, coreLabel, coreStatuses } from '@/lib/cores';
+import { coreInfo, coreLabel, coreStatuses, terminationLabel } from '@/lib/cores';
 import { getJson } from '@/lib/http';
 import type { Cable, CableCore, CableEndKind, CoreStatus, CoreTrace } from '@/types';
 import { useForm } from '@inertiajs/vue3';
@@ -113,18 +113,25 @@ function submit() {
                     <div v-if="traceLoading" class="flex items-center gap-2 text-sm text-muted-foreground">
                         <LoaderCircle class="size-4 animate-spin" /> Menelusuri…
                     </div>
-                    <p v-else-if="trace && trace.segments.length === 1" class="text-sm text-muted-foreground">
-                        Core ini belum disambung ke core kabel lain. Sambungan dibuat di panel Joint/Roset, ODC atau ODP.
+                    <p
+                        v-else-if="trace && trace.segments.length === 1 && !trace.start_termination && !trace.end_termination"
+                        class="text-sm text-muted-foreground"
+                    >
+                        Core ini belum disambung ke core kabel lain atau ke input/port ODP. Sambungan dibuat di panel Joint/Roset, ODC atau ODP.
                     </p>
                     <ol v-else-if="trace" class="rounded-md border p-2 text-sm">
-                        <li v-if="trace.start" class="pb-1 text-xs text-muted-foreground">
+                        <li v-if="trace.start || trace.start_termination" class="pb-1 text-xs text-muted-foreground">
                             Mulai:
                             <button
+                                v-if="trace.start"
                                 class="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                                @click="emit('selectAsset', trace.start!.kind, trace.start!.id)"
+                                @click="emit('selectAsset', trace.start.kind, trace.start.id)"
                             >
-                                {{ endLabel(trace.start!.kind, trace.start!.code) }}
+                                {{ endLabel(trace.start.kind, trace.start.code) }}
                             </button>
+                            <b v-if="trace.start_termination" class="text-foreground">
+                                · {{ terminationLabel(trace.start_termination, trace.start_termination.odp?.id !== trace.start?.id) }}
+                            </b>
                         </li>
                         <template v-for="(segment, i) in trace.segments" :key="segment.core_id">
                             <li class="flex items-center gap-2 rounded px-1 py-1" :class="segment.core_id === core.id && 'bg-muted'">
@@ -154,14 +161,18 @@ function submit() {
                                 <template v-if="trace.joins[i].notes"> ({{ trace.joins[i].notes }})</template>
                             </li>
                         </template>
-                        <li v-if="trace.end" class="pt-1 text-xs text-muted-foreground">
+                        <li v-if="trace.end || trace.end_termination" class="pt-1 text-xs text-muted-foreground">
                             Selesai:
                             <button
+                                v-if="trace.end"
                                 class="font-medium text-blue-600 hover:underline dark:text-blue-400"
-                                @click="emit('selectAsset', trace.end!.kind, trace.end!.id)"
+                                @click="emit('selectAsset', trace.end.kind, trace.end.id)"
                             >
-                                {{ endLabel(trace.end!.kind, trace.end!.code) }}
+                                {{ endLabel(trace.end.kind, trace.end.code) }}
                             </button>
+                            <b v-if="trace.end_termination" class="text-foreground">
+                                · {{ terminationLabel(trace.end_termination, trace.end_termination.odp?.id !== trace.end?.id) }}
+                            </b>
                         </li>
                     </ol>
                 </div>

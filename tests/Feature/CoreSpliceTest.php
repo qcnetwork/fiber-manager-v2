@@ -189,6 +189,63 @@ class CoreSpliceTest extends TestCase
         $this->get("/splice-sheet/joint/{$foreign->id}")->assertNotFound();
     }
 
+    public function test_core_can_end_on_an_odp_input_or_output_port()
+    {
+        $port = $this->odp->ports()->where('number', 3)->sole();
+        $customer = \App\Models\Customer::create(['area_id' => $this->area->id, 'name' => 'Budi']);
+        $port->update(['status' => 'terpakai', 'customer_id' => $customer->id]);
+
+        // Feeder core 1 → JB-01 → distribution core 1 → ODP input 1; distribution core 2 straight to port 3.
+        $this->splice('joint', $this->joint->id, [[$this->core($this->feeder, 1), $this->core($this->distribution, 1)]])->assertSessionHasNoErrors();
+        $d1 = $this->core($this->distribution, 1);
+        $d2 = $this->core($this->distribution, 2);
+        $this->post("/odps/{$this->odp->id}/terminations", ['core_id' => $d1->id, 'kind' => 'input', 'port' => 1])->assertSessionHasNoErrors();
+        $this->post("/odps/{$this->odp->id}/terminations", ['core_id' => $d2->id, 'kind' => 'output', 'port' => 3])->assertSessionHasNoErrors();
+
+        $this->assertSame('terpakai', $d2->fresh()->status->value);
+
+        // Traced from the feeder, the path ends on the ODP's splitter input.
+        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 1)->id.'/trace')->json();
+        $termination = $trace['start_termination'] ?? $trace['end_termination'];
+        $this->assertSame(['input', 1, $this->odp->code], [$termination['kind'], $termination['port'], $termination['odp']['code']]);
+
+        // The direct core reaches the customer on port 3.
+        $trace = $this->getJson("/cable-cores/{$d2->id}/trace")->json();
+        $termination = $trace['start_termination'] ?? $trace['end_termination'];
+        $this->assertSame('Budi', $termination['customer']['name']);
+
+        // The ODP panel and splice sheet show both.
+        $this->assertCount(2, $this->getJson("/odps/{$this->odp->id}")->json('odp.core_terminations'));
+        $this->get("/splice-sheet/odp/{$this->odp->id}")->assertOk()->assertInertia(fn ($page) => $page->has('rows', 2));
+        $data = $this->getJson("/splices?location_type=odp&location_id={$this->odp->id}")->json();
+        $this->assertCount(2, $data['terminations']);
+        $this->assertSame(8, count($data['odp']['ports']));
+    }
+
+    public function test_termination_rules()
+    {
+        $d1 = $this->core($this->distribution, 1);
+        $d2 = $this->core($this->distribution, 2);
+        $url = "/odps/{$this->odp->id}/terminations";
+        $this->post($url, ['core_id' => $d1->id, 'kind' => 'input', 'port' => 1])->assertSessionHasNoErrors();
+
+        // One core per input/port, and a core ends on an ODP only once.
+        $this->post($url, ['core_id' => $d2->id, 'kind' => 'input', 'port' => 1])->assertSessionHasErrors('port');
+        $this->post($url, ['core_id' => $d1->id, 'kind' => 'output', 'port' => 2])->assertSessionHasErrors('core_id');
+        // Ports beyond the ODP's capacity don't exist.
+        $this->post($url, ['core_id' => $d2->id, 'kind' => 'output', 'port' => 99])->assertSessionHasErrors('port');
+        // The feeder doesn't reach this ODP.
+        $this->post($url, ['core_id' => $this->core($this->feeder, 1)->id, 'kind' => 'output', 'port' => 2])->assertSessionHasErrors('core_id');
+
+        // A terminated core can't be spliced at the same ODP, and the ODP can't shrink below a terminated port.
+        $this->post($url, ['core_id' => $d2->id, 'kind' => 'output', 'port' => 8])->assertSessionHasNoErrors();
+        $this->assertFalse($this->odp->fresh()->forceFill(['capacity' => 4])->syncPorts());
+
+        $termination = \App\Models\CoreTermination::where('port', 8)->sole();
+        $this->delete("/terminations/{$termination->id}")->assertSessionHasNoErrors();
+        $this->assertTrue($this->odp->fresh()->forceFill(['capacity' => 4])->syncPorts());
+    }
+
     public function test_cable_detail_shows_how_often_each_core_is_spliced()
     {
         $this->splice('joint', $this->joint->id, [[$this->core($this->feeder, 1), $this->core($this->distribution, 1)]])->assertSessionHasNoErrors();

@@ -9,6 +9,9 @@ use App\Models\Area;
 use App\Models\Cable;
 use App\Models\CableCore;
 use App\Models\CoreSplice;
+use App\Models\CoreTermination;
+use App\Models\Odp;
+use App\Models\OdpPort;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -33,12 +36,36 @@ class CoreSpliceController extends Controller
         $location = $this->location($request);
 
         $cables = Cable::connectedTo($location)->with('coreRows')->orderBy('code')->get();
-        $counts = CableCore::spliceCounts($cables->flatMap(fn (Cable $c) => $c->coreRows->modelKeys()));
+        $counts = CableCore::connectionCounts($cables->flatMap(fn (Cable $c) => $c->coreRows->modelKeys()));
         $splices = $this->splicesAt($location)->with(['coreA', 'coreB'])->orderBy('id')->get();
-        $splicedHere = $splices->flatMap(fn (CoreSplice $s) => [$s->core_a_id, $s->core_b_id])->flip();
+        // At an ODP, cores can also end on a splitter input or an output port.
+        $terminations = $location instanceof Odp
+            ? CoreTermination::where('odp_id', $location->id)->with('core')->orderBy('kind')->orderBy('port')->get()
+            : collect();
+        // "Spliced here" means taken at this location, by a splice or a termination.
+        $splicedHere = $splices->flatMap(fn (CoreSplice $s) => [$s->core_a_id, $s->core_b_id])
+            ->merge($terminations->pluck('core_id'))
+            ->flip();
 
         return response()->json([
-            'max_splices' => CableCore::MAX_SPLICES,
+            'odp' => $location instanceof Odp ? [
+                'capacity' => $location->capacity,
+                'splitter_ratio' => $location->splitter_ratio,
+                'max_inputs' => CoreTermination::MAX_INPUTS,
+                'ports' => $location->ports()->with('customer:id,name')->get()->map(fn (OdpPort $p) => [
+                    'number' => $p->number,
+                    'status' => $p->status,
+                    'customer' => $p->customer?->name,
+                ]),
+            ] : null,
+            'terminations' => $terminations->map(fn (CoreTermination $t) => [
+                'id' => $t->id,
+                'kind' => $t->kind,
+                'port' => $t->port,
+                'notes' => $t->notes,
+                'core' => ['core_id' => $t->core->id, 'cable_id' => $t->core->cable_id, 'number' => $t->core->number],
+            ])->values(),
+            'max_splices' => CableCore::MAX_CONNECTIONS,
             'cables' => $cables->map(fn (Cable $cable) => [
                 ...$cable->only('id', 'code', 'type', 'cores', 'tube_size'),
                 'cores_list' => $cable->coreRows->map(fn (CableCore $core) => [
@@ -80,8 +107,10 @@ class CoreSpliceController extends Controller
         }
 
         $cores = CableCore::whereKey($coreIds)->get()->keyBy('id');
-        $counts = CableCore::spliceCounts($coreIds);
-        $here = $this->splicesAt($location)->get()->flatMap(fn (CoreSplice $s) => [$s->core_a_id, $s->core_b_id])->flip();
+        $counts = CableCore::connectionCounts($coreIds);
+        $here = $this->splicesAt($location)->get()->flatMap(fn (CoreSplice $s) => [$s->core_a_id, $s->core_b_id])
+            ->merge($location instanceof Odp ? CoreTermination::where('odp_id', $location->id)->pluck('core_id') : [])
+            ->flip();
 
         foreach ($coreIds as $id) {
             $core = $cores[$id] ?? null;
@@ -91,7 +120,7 @@ class CoreSpliceController extends Controller
             if ($here->has($id)) {
                 throw ValidationException::withMessages(['pairs' => "Core {$core->number} sudah disambung di titik ini."]);
             }
-            if ($counts[$id] >= CableCore::MAX_SPLICES) {
+            if ($counts[$id] >= CableCore::MAX_CONNECTIONS) {
                 throw ValidationException::withMessages(['pairs' => "Core {$core->number} sudah tersambung di kedua ujungnya."]);
             }
         }

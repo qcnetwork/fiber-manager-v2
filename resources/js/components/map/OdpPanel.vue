@@ -2,6 +2,7 @@
 import CoreSplices from '@/components/map/CoreSplices.vue';
 import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import StatusBadge from '@/components/map/StatusBadge.vue';
+import { coreInfo } from '@/lib/cores';
 import { Button } from '@/components/ui/button';
 import type { Odp, OdpPort, PortStatus } from '@/types';
 import { Navigation, Pencil, Trash2, X } from '@lucide/vue';
@@ -35,6 +36,10 @@ const ports = computed(() => props.odp.ports ?? []);
 const used = computed(() => ports.value.filter((p) => p.status !== 'kosong').length);
 const unknownCount = computed(() => ports.value.filter((p) => p.status === 'terpakai' && !p.customer).length);
 const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destination=${props.odp.lat},${props.odp.lng}`);
+
+// Cores ending on the splitter inputs, and straight on output ports.
+const inputs = computed(() => (props.odp.core_terminations ?? []).filter((t) => t.kind === 'input'));
+const outputCore = (port: number) => (props.odp.core_terminations ?? []).find((t) => t.kind === 'output' && t.port === port);
 </script>
 
 <template>
@@ -67,6 +72,20 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
             </dd>
             <dt class="text-muted-foreground">Splitter</dt>
             <dd>{{ odp.splitter_ratio ?? '—' }}</dd>
+            <template v-for="t in inputs" :key="`in-${t.port}`">
+                <dt class="text-muted-foreground">Input {{ inputs.length > 1 ? t.port : '' }}</dt>
+                <dd class="flex items-center gap-1.5">
+                    <span v-if="t.cable" class="core-dot size-3" :style="{ '--c': coreInfo(t.number, t.cable.tube_size).color.hex }" />
+                    <button
+                        v-if="t.cable"
+                        class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                        @click="emit('selectCable', t.cable.id)"
+                    >
+                        {{ t.cable.code ?? `Kabel #${t.cable.id}` }}
+                    </button>
+                    core {{ t.number }}
+                </dd>
+            </template>
             <dt class="text-muted-foreground">No. tiang</dt>
             <dd>{{ odp.pole_number ?? '—' }}</dd>
             <dt class="text-muted-foreground">Alamat</dt>
@@ -99,7 +118,15 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
                     :disabled="!canEdit"
                     @click="emit('openPort', port)"
                 >
-                    {{ port.number }}
+                    <span class="flex items-center gap-1">
+                        {{ port.number }}
+                        <span
+                            v-if="outputCore(port.number)"
+                            class="core-dot size-2.5"
+                            :style="{ '--c': coreInfo(outputCore(port.number)!.number, outputCore(port.number)!.cable?.tube_size ?? 12).color.hex }"
+                            :title="`Core langsung: ${outputCore(port.number)!.cable?.code ?? 'kabel'} core ${outputCore(port.number)!.number}`"
+                        />
+                    </span>
                     <span v-if="port.customer" class="max-w-full truncate px-1 text-[10px] font-normal">{{ port.customer.name }}</span>
                     <span v-else-if="port.status === 'terpakai'" class="text-[10px] font-normal italic opacity-80">belum diketahui</span>
                 </button>
@@ -137,7 +164,7 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
             </ul>
         </div>
 
-        <CoreSplices kind="odp" :id="odp.id" :can-edit="canEdit" @select-cable="(id) => emit('selectCable', id)" />
+        <CoreSplices kind="odp" :id="odp.id" :can-edit="canEdit" @select-cable="(id) => emit('selectCable', id)" @changed="emit('refresh')" />
 
         <PhotoGallery
             owner-type="odp"

@@ -77,6 +77,10 @@ class Odp extends Model
         if ($toRemove->contains(fn (OdpPort $port) => $port->status !== PortStatus::Kosong)) {
             return false;
         }
+        // An output port with a core terminated on it is in use too.
+        if (CoreTermination::where('odp_id', $this->id)->where('kind', 'output')->where('port', '>', $this->capacity)->exists()) {
+            return false;
+        }
 
         $this->ports()->whereKey($toRemove->modelKeys())->delete();
 
