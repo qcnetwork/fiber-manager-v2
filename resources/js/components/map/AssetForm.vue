@@ -59,6 +59,9 @@ const form = useForm({
     connect_cables: [] as number[],
 });
 
+// For the auto-code hint on joints.
+const areaCode = computed(() => props.areas.find((a) => a.id === Number(form.area_id))?.code ?? null);
+
 // ---- Cables passing near the marker, offered for connecting the asset to
 interface NearbyCable {
     id: number;
@@ -228,9 +231,12 @@ function submit() {
                 <Input
                     id="code"
                     v-model="form.code"
-                    required
-                    :placeholder="{ odc: 'ODC-BDG-01', odp: 'ODP-BDG-01/01', joint: form.type === 'roset' ? 'RS-BDG-01' : 'JB-BDG-01' }[kind]"
+                    :required="kind !== 'joint'"
+                    :placeholder="{ odc: 'ODC-BDG-01', odp: 'ODP-BDG-01/01', joint: 'Kosongkan = otomatis' }[kind]"
                 />
+                <p v-if="kind === 'joint' && !form.code" class="text-xs text-muted-foreground">
+                    Dibuat otomatis, mis. {{ form.type === 'roset' ? 'RS' : 'JB' }}-{{ areaCode ?? 'AREA' }}-01
+                </p>
                 <InputError :message="form.errors.code" />
             </div>
             <div class="grid gap-1.5">

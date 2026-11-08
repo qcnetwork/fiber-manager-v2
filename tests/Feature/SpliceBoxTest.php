@@ -43,6 +43,27 @@ class SpliceBoxTest extends TestCase
         $this->assertSame([$cable->id], array_column($response->json('cables'), 'id'));
     }
 
+    public function test_blank_code_is_generated_per_type_and_area()
+    {
+        $prefix = "JB-{$this->area->code}-";
+        SpliceBox::factory()->create(['area_id' => $this->area->id, 'type' => 'joint_box', 'code' => $prefix.'07']);
+        SpliceBox::factory()->create(['area_id' => $this->area->id, 'type' => 'joint_box', 'code' => $prefix.'lama']);
+
+        foreach (['joint_box', 'roset', 'joint_box'] as $type) {
+            $this->post('/joints', ['type' => $type, 'code' => '', 'status' => 'aktif', 'lat' => -6.2, 'lng' => 106.8])
+                ->assertSessionHasNoErrors();
+        }
+
+        $codes = SpliceBox::latest('id')->limit(3)->pluck('code')->reverse()->values()->all();
+        $this->assertSame([$prefix.'08', "RS-{$this->area->code}-01", $prefix.'09'], $codes);
+
+        // A typed code is kept; clearing it on edit generates a new one.
+        $joint = SpliceBox::where('code', $prefix.'lama')->sole();
+        $this->put("/joints/{$joint->id}", ['type' => 'joint_box', 'code' => '', 'status' => 'aktif', 'lat' => -6.2, 'lng' => 106.8])
+            ->assertSessionHasNoErrors();
+        $this->assertSame($prefix.'10', $joint->fresh()->code);
+    }
+
     public function test_cable_can_end_and_pass_through_joints_and_follows_them()
     {
         $odc = Odc::factory()->for($this->area)->create(['lat' => -6.2, 'lng' => 106.8]);
