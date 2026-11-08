@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cableTypes, endLabel } from '@/lib/cables';
-import { coreInfo, coreLabel, coreStatuses, terminationLabel } from '@/lib/cores';
+import { coreInfo, coreLabel, coreStatuses, endTerminationLabel } from '@/lib/cores';
 import { getJson } from '@/lib/http';
 import type { Cable, CableCore, CableEndKind, CoreStatus, CoreTrace } from '@/types';
 import { useForm } from '@inertiajs/vue3';
@@ -130,7 +130,7 @@ function submit() {
                                 {{ endLabel(trace.start.kind, trace.start.code) }}
                             </button>
                             <b v-if="trace.start_termination" class="text-foreground">
-                                · {{ terminationLabel(trace.start_termination, trace.start_termination.odp?.id !== trace.start?.id) }}
+                                · {{ endTerminationLabel(trace.start_termination, trace.start) }}
                             </b>
                         </li>
                         <template v-for="(segment, i) in trace.segments" :key="segment.core_id">
@@ -171,7 +171,7 @@ function submit() {
                                 {{ endLabel(trace.end.kind, trace.end.code) }}
                             </button>
                             <b v-if="trace.end_termination" class="text-foreground">
-                                · {{ terminationLabel(trace.end_termination, trace.end_termination.odp?.id !== trace.end?.id) }}
+                                · {{ endTerminationLabel(trace.end_termination, trace.end) }}
                             </b>
                         </li>
                     </ol>

@@ -4,6 +4,8 @@ namespace App\Models\Concerns;
 
 use App\Models\ActivityLog;
 use App\Models\Cable;
+use App\Models\CoreSplice;
+use App\Models\CoreTermination;
 
 /**
  * For assets that cables can start or end at: moving the asset drags the cable ends along.
@@ -20,6 +22,11 @@ trait ConnectsCables
             }
         });
 
-        static::deleted(fn ($asset) => ActivityLog::muted(fn () => Cable::followEndpoint($asset, deleted: true)));
+        static::deleted(function ($asset) {
+            ActivityLog::muted(fn () => Cable::followEndpoint($asset, deleted: true));
+            // Core splices made here and cores ending here go with the asset.
+            CoreSplice::where('location_type', $asset->getMorphClass())->where('location_id', $asset->getKey())->delete();
+            CoreTermination::at($asset)->delete();
+        });
     }
 }

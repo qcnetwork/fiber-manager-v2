@@ -69,7 +69,7 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::post('splices', [CoreSpliceController::class, 'store'])->name('splices.store');
     Route::delete('splices/{splice}', [CoreSpliceController::class, 'destroy'])->name('splices.destroy');
     Route::get('splice-sheet/{kind}/{id}', [SpliceSheetController::class, 'show'])->whereNumber('id')->name('splice-sheet');
-    Route::post('odps/{odp}/terminations', [CoreTerminationController::class, 'store'])->name('terminations.store');
+    Route::post('terminations', [CoreTerminationController::class, 'store'])->name('terminations.store');
     Route::delete('terminations/{termination}', [CoreTerminationController::class, 'destroy'])->name('terminations.destroy');
     Route::apiResource('cables', CableController::class)->except('index');
     Route::post('photos', [PhotoController::class, 'store'])->name('photos.store');

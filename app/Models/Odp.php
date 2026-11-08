@@ -78,7 +78,7 @@ class Odp extends Model
             return false;
         }
         // An output port with a core terminated on it is in use too.
-        if (CoreTermination::where('odp_id', $this->id)->where('kind', 'output')->where('port', '>', $this->capacity)->exists()) {
+        if (CoreTermination::at($this)->where('kind', 'output')->where('port', '>', $this->capacity)->exists()) {
             return false;
         }
 

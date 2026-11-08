@@ -2,6 +2,7 @@
 import CoreSplices from '@/components/map/CoreSplices.vue';
 import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import StatusBadge from '@/components/map/StatusBadge.vue';
+import { coreInfo } from '@/lib/cores';
 import { Button } from '@/components/ui/button';
 import type { OdcDetail } from '@/types';
 import { Navigation, Pencil, Plus, Trash2, X } from '@lucide/vue';
@@ -26,6 +27,10 @@ const emit = defineEmits<{
 
 const odc = computed(() => props.detail.odc);
 const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destination=${odc.value.lat},${odc.value.lng}`);
+
+// Cores ending on the splitter inputs, and straight on output ports.
+const inputs = computed(() => (props.detail.core_terminations ?? []).filter((t) => t.kind === 'input'));
+const outputCore = (port: number) => (props.detail.core_terminations ?? []).find((t) => t.kind === 'output' && t.port === port);
 </script>
 
 <template>
@@ -63,6 +68,20 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
             </dd>
             <dt class="text-muted-foreground">Splitter</dt>
             <dd>{{ odc.splitter_ratio ?? '—' }}</dd>
+            <template v-for="t in inputs" :key="`in-${t.port}`">
+                <dt class="text-muted-foreground">Input {{ inputs.length > 1 ? t.port : '' }}</dt>
+                <dd class="flex items-center gap-1.5">
+                    <span v-if="t.cable" class="core-dot size-3" :style="{ '--c': coreInfo(t.number, t.cable.tube_size).color.hex }" />
+                    <button
+                        v-if="t.cable"
+                        class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                        @click="emit('selectCable', t.cable.id)"
+                    >
+                        {{ t.cable.code ?? `Kabel #${t.cable.id}` }}
+                    </button>
+                    core {{ t.number }}
+                </dd>
+            </template>
             <dt class="text-muted-foreground">Alamat</dt>
             <dd>{{ odc.address ?? '—' }}</dd>
             <dt class="text-muted-foreground">Koordinat</dt>
@@ -89,7 +108,17 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
                         class="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted"
                         @click="emit('selectOdp', odp.id)"
                     >
-                        <span class="w-10 font-mono text-xs text-muted-foreground">P{{ odp.odc_port ?? '-' }}</span>
+                        <span class="flex w-12 items-center gap-1 font-mono text-xs text-muted-foreground">
+                            P{{ odp.odc_port ?? '-' }}
+                            <span
+                                v-if="odp.odc_port && outputCore(odp.odc_port)"
+                                class="core-dot size-2.5"
+                                :style="{
+                                    '--c': coreInfo(outputCore(odp.odc_port)!.number, outputCore(odp.odc_port)!.cable?.tube_size ?? 12).color.hex,
+                                }"
+                                :title="`Core langsung: ${outputCore(odp.odc_port)!.cable?.code ?? 'kabel'} core ${outputCore(odp.odc_port)!.number}`"
+                            />
+                        </span>
                         <span class="flex-1 truncate font-medium">{{ odp.code }}</span>
                         <span class="text-xs" :class="odp.used_ports >= odp.capacity ? 'font-semibold text-red-600' : 'text-muted-foreground'">
                             {{ odp.used_ports }}/{{ odp.capacity }}
@@ -100,7 +129,7 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
             <p v-else class="text-sm text-muted-foreground">Belum ada ODP yang terhubung.</p>
         </div>
 
-        <CoreSplices kind="odc" :id="odc.id" :can-edit="canEdit" @select-cable="(id) => emit('selectCable', id)" />
+        <CoreSplices kind="odc" :id="odc.id" :can-edit="canEdit" @select-cable="(id) => emit('selectCable', id)" @changed="emit('refresh')" />
 
         <PhotoGallery
             owner-type="odc"

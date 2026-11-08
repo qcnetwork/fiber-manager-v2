@@ -18,16 +18,7 @@ class OdpController extends Controller
         $odp->load(['area:id,code,name', 'odc:id,code,name', 'ports.customer', 'photos.user:id,name']);
 
         // Cores ending on this ODP's splitter inputs and output ports.
-        $terminations = CoreTermination::where('odp_id', $odp->id)->with('core.cable:id,code,type,cores,tube_size')->orderBy('kind')->orderBy('port')->get()
-            ->map(fn (CoreTermination $t) => [
-                'kind' => $t->kind,
-                'port' => $t->port,
-                'core_id' => $t->core->id,
-                'number' => $t->core->number,
-                'cable' => $t->core->cable?->only('id', 'code', 'type', 'cores', 'tube_size'),
-            ]);
-
-        return response()->json(['odp' => [...$odp->toArray(), 'core_terminations' => $terminations]]);
+        return response()->json(['odp' => [...$odp->toArray(), 'core_terminations' => CoreTermination::listFor($odp)]]);
     }
 
     public function store(OdpRequest $request): RedirectResponse

@@ -60,13 +60,25 @@ export const coreStatuses = {
 
 /** Cores per tube to choose from in the cable form. */
 export const tubeSizes = [1, 2, 4, 6, 8, 12, 24];
+interface TerminationLike {
+    kind: string;
+    port: number;
+    location?: { kind: string; id: number; code: string } | null;
+    /** What an output port feeds: a customer (ODP) or an ODP (ODC). */
+    customer?: { name: string } | null;
+    odp?: { code: string } | null;
+    feeds?: string | null;
+}
 
-/** "ODP-07 · Input 1" / "ODP-07 · Port 3 → Budi" for a core ending at an ODP. */
-export function terminationLabel(
-    t: { kind: string; port: number; odp?: { code: string } | null; customer?: { name: string } | null },
-    withOdp = true,
-): string {
+/** "ODP-07 · Input splitter 1" / "ODP-07 · Port 3 → Budi" / "ODC-01 · Port 2 → ODP-07" for a core ending at an ODP/ODC. */
+export function terminationLabel(t: TerminationLike, withLocation = true): string {
     const where = t.kind === 'input' ? `Input splitter ${t.port}` : `Port ${t.port}`;
-    const customer = t.kind === 'output' && t.customer ? ` → ${t.customer.name}` : '';
-    return `${withOdp && t.odp ? `${t.odp.code} · ` : ''}${where}${customer}`;
+    const feeds = t.kind === 'output' ? (t.customer?.name ?? t.odp?.code ?? t.feeds ?? null) : null;
+    return `${withLocation && t.location ? `${t.location.code} · ` : ''}${where}${feeds ? ` → ${feeds}` : ''}`;
+}
+
+/** The termination at a path end, without repeating the ODP/ODC when the end already names it. */
+export function endTerminationLabel(t: TerminationLike, end: { kind: string; id: number } | null): string {
+    const same = !!end && !!t.location && end.kind === t.location.kind && end.id === t.location.id;
+    return terminationLabel(t, !same);
 }

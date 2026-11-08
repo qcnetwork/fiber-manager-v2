@@ -27,7 +27,8 @@ const emit = defineEmits<{
     changed: [];
 }>();
 
-const toCustomer = (name: string | null | undefined) => (name ? { name } : null);
+/** "ODP" / "ODC" in texts about ending cores here. */
+const terminalLabel = computed(() => (data.value?.terminal?.kind ?? props.kind).toUpperCase());
 
 const data = ref<SpliceData | null>(null);
 async function load() {
@@ -150,7 +151,7 @@ watch(
 
 /** Splitter inputs and output ports to end a core on; ones already holding a core are shown but disabled. */
 const targets = computed(() => {
-    const odp = data.value?.odp;
+    const odp = data.value?.terminal;
     if (!odp) return [];
     const taken = new Set((data.value?.terminations ?? []).map((t) => `${t.kind}:${t.port}`));
     const inputs = Array.from({ length: odp.max_inputs }, (_, i) => ({
@@ -160,7 +161,7 @@ const targets = computed(() => {
     }));
     const outputs = odp.ports.map((p) => ({
         value: `output:${p.number}`,
-        label: `Port ${p.number}${p.customer ? ` · ${p.customer}` : p.status !== 'kosong' ? ` · ${p.status}` : ''}`,
+        label: `Port ${p.number}${p.feeds ? ` · ${p.feeds}` : p.status !== 'kosong' ? ` · ${p.status}` : ''}`,
         taken: taken.has(`output:${p.number}`),
     }));
     return [...inputs, ...outputs];
@@ -173,8 +174,8 @@ function saveTermination() {
     saving.value = true;
     termError.value = '';
     router.post(
-        route('terminations.store', { odp: props.id }),
-        { core_id: core.id, kind, port: Number(port), notes: termForm.value.notes || null },
+        route('terminations.store'),
+        { location_type: props.kind, location_id: props.id, core_id: core.id, kind, port: Number(port), notes: termForm.value.notes || null },
         {
             preserveScroll: true,
             preserveState: true,
@@ -190,7 +191,7 @@ function saveTermination() {
 }
 
 function removeTermination(id: number) {
-    if (!confirm('Lepas core ini dari ODP?')) return;
+    if (!confirm(`Lepas core ini dari ${terminalLabel.value}?`)) return;
     router.delete(route('terminations.destroy', { termination: id }), {
         preserveScroll: true,
         preserveState: true,
@@ -319,11 +320,11 @@ function removeTermination(id: number) {
             <p v-else-if="data.cables.length && !adding" class="text-sm text-muted-foreground">Belum ada core yang disambung di sini.</p>
 
             <!-- ODP: cores ending on the splitter input or an output port -->
-            <div v-if="data.odp" class="mt-4">
+            <div v-if="data.terminal" class="mt-4">
                 <div class="mb-2 flex items-center justify-between">
-                    <h3 class="text-sm font-semibold">Core ke input/output ODP ({{ data.terminations.length }})</h3>
+                    <h3 class="text-sm font-semibold">Core ke input/output {{ terminalLabel }} ({{ data.terminations.length }})</h3>
                     <Button v-if="canEdit && data.cables.length && !terminating" variant="outline" size="sm" @click="startTerminating">
-                        <Plus class="size-4" /> Sambung ke ODP
+                        <Plus class="size-4" /> Sambung ke {{ terminalLabel }}
                     </Button>
                 </div>
 
@@ -401,13 +402,7 @@ function removeTermination(id: number) {
                                 <span class="font-medium">
                                     {{
                                         terminationLabel(
-                                            {
-                                                ...t,
-                                                customer:
-                                                    t.kind === 'output'
-                                                        ? toCustomer(data.odp.ports.find((p) => p.number === t.port)?.customer)
-                                                        : null,
-                                            },
+                                            { ...t, feeds: t.kind === 'output' ? data.terminal.ports.find((p) => p.number === t.port)?.feeds : null },
                                             false,
                                         )
                                     }}
@@ -415,12 +410,21 @@ function removeTermination(id: number) {
                             </div>
                             <div v-if="t.notes" class="text-xs text-muted-foreground">{{ t.notes }}</div>
                         </div>
-                        <Button v-if="canEdit" variant="ghost" size="icon" class="size-7" title="Lepas dari ODP" @click="removeTermination(t.id)">
+                        <Button
+                            v-if="canEdit"
+                            variant="ghost"
+                            size="icon"
+                            class="size-7"
+                            :title="`Lepas dari ${terminalLabel}`"
+                            @click="removeTermination(t.id)"
+                        >
                             <Trash2 class="size-3.5" />
                         </Button>
                     </li>
                 </ul>
-                <p v-else-if="!terminating" class="text-sm text-muted-foreground">Belum ada core yang masuk ke splitter atau port ODP ini.</p>
+                <p v-else-if="!terminating" class="text-sm text-muted-foreground">
+                    Belum ada core yang masuk ke splitter atau port {{ terminalLabel }} ini.
+                </p>
             </div>
         </template>
     </div>

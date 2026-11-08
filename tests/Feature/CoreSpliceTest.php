@@ -69,6 +69,11 @@ class CoreSpliceTest extends TestCase
         ]);
     }
 
+    private function terminate(string $type, int $id, CableCore $core, string $kind, int $port): \Illuminate\Testing\TestResponse
+    {
+        return $this->post('/terminations', ['location_type' => $type, 'location_id' => $id, 'core_id' => $core->id, 'kind' => $kind, 'port' => $port]);
+    }
+
     public function test_cores_of_cables_meeting_at_a_joint_can_be_spliced()
     {
         $this->splice('joint', $this->joint->id, [
@@ -199,15 +204,15 @@ class CoreSpliceTest extends TestCase
         $this->splice('joint', $this->joint->id, [[$this->core($this->feeder, 1), $this->core($this->distribution, 1)]])->assertSessionHasNoErrors();
         $d1 = $this->core($this->distribution, 1);
         $d2 = $this->core($this->distribution, 2);
-        $this->post("/odps/{$this->odp->id}/terminations", ['core_id' => $d1->id, 'kind' => 'input', 'port' => 1])->assertSessionHasNoErrors();
-        $this->post("/odps/{$this->odp->id}/terminations", ['core_id' => $d2->id, 'kind' => 'output', 'port' => 3])->assertSessionHasNoErrors();
+        $this->terminate('odp', $this->odp->id, $d1, 'input', 1)->assertSessionHasNoErrors();
+        $this->terminate('odp', $this->odp->id, $d2, 'output', 3)->assertSessionHasNoErrors();
 
         $this->assertSame('terpakai', $d2->fresh()->status->value);
 
         // Traced from the feeder, the path ends on the ODP's splitter input.
         $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 1)->id.'/trace')->json();
         $termination = $trace['start_termination'] ?? $trace['end_termination'];
-        $this->assertSame(['input', 1, $this->odp->code], [$termination['kind'], $termination['port'], $termination['odp']['code']]);
+        $this->assertSame(['input', 1, $this->odp->code], [$termination['kind'], $termination['port'], $termination['location']['code']]);
 
         // The direct core reaches the customer on port 3.
         $trace = $this->getJson("/cable-cores/{$d2->id}/trace")->json();
@@ -219,31 +224,60 @@ class CoreSpliceTest extends TestCase
         $this->get("/splice-sheet/odp/{$this->odp->id}")->assertOk()->assertInertia(fn ($page) => $page->has('rows', 2));
         $data = $this->getJson("/splices?location_type=odp&location_id={$this->odp->id}")->json();
         $this->assertCount(2, $data['terminations']);
-        $this->assertSame(8, count($data['odp']['ports']));
+        $this->assertSame(8, count($data['terminal']['ports']));
     }
 
     public function test_termination_rules()
     {
         $d1 = $this->core($this->distribution, 1);
         $d2 = $this->core($this->distribution, 2);
-        $url = "/odps/{$this->odp->id}/terminations";
-        $this->post($url, ['core_id' => $d1->id, 'kind' => 'input', 'port' => 1])->assertSessionHasNoErrors();
+        $odp = $this->odp->id;
+        $this->terminate('odp', $odp, $d1, 'input', 1)->assertSessionHasNoErrors();
 
         // One core per input/port, and a core ends on an ODP only once.
-        $this->post($url, ['core_id' => $d2->id, 'kind' => 'input', 'port' => 1])->assertSessionHasErrors('port');
-        $this->post($url, ['core_id' => $d1->id, 'kind' => 'output', 'port' => 2])->assertSessionHasErrors('core_id');
+        $this->terminate('odp', $odp, $d2, 'input', 1)->assertSessionHasErrors('port');
+        $this->terminate('odp', $odp, $d1, 'output', 2)->assertSessionHasErrors('core_id');
         // Ports beyond the ODP's capacity don't exist.
-        $this->post($url, ['core_id' => $d2->id, 'kind' => 'output', 'port' => 99])->assertSessionHasErrors('port');
+        $this->terminate('odp', $odp, $d2, 'output', 99)->assertSessionHasErrors('port');
         // The feeder doesn't reach this ODP.
-        $this->post($url, ['core_id' => $this->core($this->feeder, 1)->id, 'kind' => 'output', 'port' => 2])->assertSessionHasErrors('core_id');
+        $this->terminate('odp', $odp, $this->core($this->feeder, 1), 'output', 2)->assertSessionHasErrors('core_id');
+        // Joints have no splitter or ports.
+        $this->terminate('joint', $this->joint->id, $d2, 'input', 1)->assertSessionHasErrors('location_type');
 
         // A terminated core can't be spliced at the same ODP, and the ODP can't shrink below a terminated port.
-        $this->post($url, ['core_id' => $d2->id, 'kind' => 'output', 'port' => 8])->assertSessionHasNoErrors();
+        $this->terminate('odp', $odp, $d2, 'output', 8)->assertSessionHasNoErrors();
         $this->assertFalse($this->odp->fresh()->forceFill(['capacity' => 4])->syncPorts());
 
         $termination = \App\Models\CoreTermination::where('port', 8)->sole();
         $this->delete("/terminations/{$termination->id}")->assertSessionHasNoErrors();
         $this->assertTrue($this->odp->fresh()->forceFill(['capacity' => 4])->syncPorts());
+    }
+
+    public function test_core_can_end_on_an_odc_input_or_an_output_port_feeding_an_odp()
+    {
+        // A feeder from the POP side ends at the ODC; ODC port 2 feeds our ODP.
+        $this->odp->update(['odc_id' => $this->odc->id, 'odc_port' => 2]);
+        $this->terminate('odc', $this->odc->id, $this->core($this->feeder, 1), 'input', 1)->assertSessionHasNoErrors();
+        $this->terminate('odc', $this->odc->id, $this->core($this->feeder, 2), 'output', 2)->assertSessionHasNoErrors();
+
+        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 2)->id.'/trace')->json();
+        $termination = $trace['start_termination'];
+        $this->assertSame(['odc', 'output', 2, $this->odp->code], [
+            $termination['location']['kind'], $termination['kind'], $termination['port'], $termination['odp']['code'],
+        ]);
+
+        $odc = $this->getJson("/odcs/{$this->odc->id}")->json();
+        $this->assertCount(2, $odc['core_terminations']);
+        $ports = $this->getJson("/splices?location_type=odc&location_id={$this->odc->id}")->json('terminal.ports');
+        $this->assertSame($this->odp->code, $ports[1]['feeds']);
+        $this->get("/splice-sheet/odc/{$this->odc->id}")->assertOk()->assertInertia(fn ($page) => $page->has('rows', 2));
+
+        // The ODC can't shrink below a port with a core on it; deleting it removes its terminations.
+        $this->put("/odcs/{$this->odc->id}", [
+            'code' => $this->odc->code, 'status' => 'aktif', 'capacity' => 1, 'lat' => -6.2, 'lng' => 106.8,
+        ])->assertSessionHasErrors('capacity');
+        $this->delete("/odcs/{$this->odc->id}");
+        $this->assertSame(0, \App\Models\CoreTermination::count());
     }
 
     public function test_cable_detail_shows_how_often_each_core_is_spliced()

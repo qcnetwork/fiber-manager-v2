@@ -8,6 +8,7 @@ use App\Models\Cable;
 use App\Models\CableCore;
 use App\Models\CoreSplice;
 use App\Models\CoreTermination;
+use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\SpliceBox;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -36,8 +37,8 @@ class SpliceSheetController extends Controller
         $location = Relation::getMorphedModel($kind)::findOrFail($id);
 
         $splices = CoreSplice::where('location_type', $kind)->where('location_id', $id)->with(['coreA', 'coreB'])->get();
-        // At an ODP, cores ending on a splitter input or output port are rows too.
-        $terminations = $location instanceof Odp ? CoreTermination::where('odp_id', $id)->with('core')->get() : collect();
+        // At an ODP or ODC, cores ending on a splitter input or output port are rows too.
+        $terminations = $location instanceof Odp || $location instanceof Odc ? CoreTermination::at($location)->with('core')->get() : collect();
         $cables = Cable::connectedTo($location)->orderBy('code')->get(['id', 'code', 'type', 'cores', 'tube_size']);
         $splicedPerCable = $splices->flatMap(fn (CoreSplice $s) => [$s->coreA, $s->coreB])
             ->merge($terminations->pluck('core')->all())

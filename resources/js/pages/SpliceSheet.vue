@@ -2,7 +2,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cableTypes, endLabel } from '@/lib/cables';
-import { coreInfo, coreStatuses, terminationLabel } from '@/lib/cores';
+import { coreInfo, coreStatuses, endTerminationLabel, terminationLabel } from '@/lib/cores';
 import type { CableType, CoreTrace, TraceTermination } from '@/types';
 import { Head, Link } from '@inertiajs/vue3';
 import { ArrowLeft, Printer } from '@lucide/vue';
@@ -193,7 +193,7 @@ function printSheet() {
                                     row.trace.start ? endLabel(row.trace.start.kind, row.trace.start.code) : '—'
                                 }}</span>
                                 <div v-if="row.trace.start_termination" class="text-xs font-normal">
-                                    {{ terminationLabel(row.trace.start_termination, row.trace.start_termination.odp?.id !== row.trace.start?.id) }}
+                                    {{ endTerminationLabel(row.trace.start_termination, row.trace.start) }}
                                 </div>
                             </td>
 
@@ -228,7 +228,7 @@ function printSheet() {
                             <td class="px-2 py-1.5 font-medium">
                                 <span class="whitespace-nowrap">{{ row.trace.end ? endLabel(row.trace.end.kind, row.trace.end.code) : '—' }}</span>
                                 <div v-if="row.trace.end_termination" class="text-xs font-normal">
-                                    {{ terminationLabel(row.trace.end_termination, row.trace.end_termination.odp?.id !== row.trace.end?.id) }}
+                                    {{ endTerminationLabel(row.trace.end_termination, row.trace.end) }}
                                 </div>
                             </td>
                             <td v-if="!isCable" class="px-2 py-1.5 text-muted-foreground">{{ row.notes ?? '' }}</td>

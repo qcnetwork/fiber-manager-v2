@@ -10,6 +10,7 @@ use App\Models\Cable;
 use App\Models\CableCore;
 use App\Models\CoreSplice;
 use App\Models\CoreTermination;
+use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\OdpPort;
 use Illuminate\Database\Eloquent\Builder;
@@ -38,25 +39,21 @@ class CoreSpliceController extends Controller
         $cables = Cable::connectedTo($location)->with('coreRows')->orderBy('code')->get();
         $counts = CableCore::connectionCounts($cables->flatMap(fn (Cable $c) => $c->coreRows->modelKeys()));
         $splices = $this->splicesAt($location)->with(['coreA', 'coreB'])->orderBy('id')->get();
-        // At an ODP, cores can also end on a splitter input or an output port.
-        $terminations = $location instanceof Odp
-            ? CoreTermination::where('odp_id', $location->id)->with('core')->orderBy('kind')->orderBy('port')->get()
-            : collect();
+        // At an ODP or ODC, cores can also end on a splitter input or an output port.
+        $terminal = $location instanceof Odp || $location instanceof Odc;
+        $terminations = $terminal ? CoreTermination::at($location)->with('core')->orderBy('kind')->orderBy('port')->get() : collect();
         // "Spliced here" means taken at this location, by a splice or a termination.
         $splicedHere = $splices->flatMap(fn (CoreSplice $s) => [$s->core_a_id, $s->core_b_id])
             ->merge($terminations->pluck('core_id'))
             ->flip();
 
         return response()->json([
-            'odp' => $location instanceof Odp ? [
+            'terminal' => $terminal ? [
+                'kind' => $location->getMorphClass(),
                 'capacity' => $location->capacity,
                 'splitter_ratio' => $location->splitter_ratio,
                 'max_inputs' => CoreTermination::MAX_INPUTS,
-                'ports' => $location->ports()->with('customer:id,name')->get()->map(fn (OdpPort $p) => [
-                    'number' => $p->number,
-                    'status' => $p->status,
-                    'customer' => $p->customer?->name,
-                ]),
+                'ports' => $this->outputPorts($location),
             ] : null,
             'terminations' => $terminations->map(fn (CoreTermination $t) => [
                 'id' => $t->id,
@@ -109,7 +106,7 @@ class CoreSpliceController extends Controller
         $cores = CableCore::whereKey($coreIds)->get()->keyBy('id');
         $counts = CableCore::connectionCounts($coreIds);
         $here = $this->splicesAt($location)->get()->flatMap(fn (CoreSplice $s) => [$s->core_a_id, $s->core_b_id])
-            ->merge($location instanceof Odp ? CoreTermination::where('odp_id', $location->id)->pluck('core_id') : [])
+            ->merge($location instanceof Odp || $location instanceof Odc ? CoreTermination::at($location)->pluck('core_id') : [])
             ->flip();
 
         foreach ($coreIds as $id) {
@@ -171,6 +168,30 @@ class CoreSpliceController extends Controller
         $core->cable()->firstOrFail(); // area scope guards access
 
         return response()->json($core->trace());
+    }
+
+    /**
+     * An ODP's or ODC's output ports with what each one feeds: an ODP port's customer, an ODC port's ODP.
+     *
+     * @return list<array{number: int, status: string, feeds: string|null}>
+     */
+    private function outputPorts(Odp|Odc $location): array
+    {
+        if ($location instanceof Odp) {
+            return $location->ports()->with('customer:id,name')->get()->map(fn (OdpPort $p) => [
+                'number' => $p->number,
+                'status' => $p->status->value,
+                'feeds' => $p->customer?->name,
+            ])->all();
+        }
+
+        $odps = Odp::where('odc_id', $location->id)->whereNotNull('odc_port')->pluck('code', 'odc_port');
+
+        return array_map(fn (int $n) => [
+            'number' => $n,
+            'status' => isset($odps[$n]) ? 'terpakai' : 'kosong',
+            'feeds' => $odps[$n] ?? null,
+        ], range(1, max(1, (int) $location->capacity)));
     }
 
     private function location(Request $request): Model

@@ -133,13 +133,7 @@ export interface Odp extends AssetFields {
     odc?: { id: number; code: string; name: string | null } | null;
     ports?: OdpPort[];
     /** Cores ending on the splitter inputs / output ports (detail only). */
-    core_terminations?: {
-        kind: TerminationKind;
-        port: number;
-        core_id: number;
-        number: number;
-        cable: { id: number; code: string | null; type: CableType; cores: number; tube_size: number } | null;
-    }[];
+    core_terminations?: PanelTermination[];
 }
 
 export type SpliceBoxType = 'joint_box' | 'roset';
@@ -174,6 +168,8 @@ export interface OdcDetail {
     odps: { id: number; code: string; odc_port: number | null; capacity: number; status: AssetStatus; used_ports: number }[];
     used_odc_ports: number[];
     customer_count: number;
+    /** Cores ending on the ODC's splitter inputs / output ports. */
+    core_terminations?: PanelTermination[];
 }
 
 export interface Customer {
@@ -297,12 +293,14 @@ export interface CableCore {
 /** Cables at a splice location with their cores, and the splices made there. */
 export interface SpliceData {
     max_splices: number;
-    /** Only at an ODP: its ports and splitter, for ending cores on an input or output port. */
-    odp: {
+    /** Only at an ODP/ODC: its splitter and output ports, for ending cores on an input or output port. */
+    terminal: {
+        kind: 'odp' | 'odc';
         capacity: number;
         splitter_ratio: string | null;
         max_inputs: number;
-        ports: { number: number; status: PortStatus; customer: string | null }[];
+        /** `feeds`: the customer on an ODP port, the ODP on an ODC port. */
+        ports: { number: number; status: string; feeds: string | null }[];
     } | null;
     terminations: {
         id: number;
@@ -346,7 +344,7 @@ export interface CoreTrace {
     /** Where the path begins and ends: the outer cable ends (null when that cable end isn't attached to an asset). */
     start: TraceEnd | null;
     end: TraceEnd | null;
-    /** Where the path really ends inside an ODP, when the outer core is terminated there. */
+    /** Where the path really ends inside an ODP/ODC, when the outer core is terminated there. */
     start_termination: TraceTermination | null;
     end_termination: TraceTermination | null;
     core_ids: number[];
@@ -354,15 +352,26 @@ export interface CoreTrace {
 
 export type TerminationKind = 'input' | 'output';
 
-/** A core ending at an ODP: on a splitter input or straight on an output port (and its customer). */
+/** A core ending at an ODP/ODC: on a splitter input or straight on an output port. */
 export interface TraceTermination {
     termination_id: number;
     core_id: number;
-    odp: { id: number; code: string; splitter_ratio: string | null } | null;
+    location: { kind: 'odp' | 'odc'; id: number; code: string; splitter_ratio: string | null } | null;
     kind: TerminationKind;
     port: number;
+    /** What the output port feeds: a customer (ODP) or an ODP (ODC). */
     customer: { id: number; name: string } | null;
+    odp: { id: number; code: string } | null;
     notes: string | null;
+}
+
+/** Cores ending on an ODP's/ODC's splitter inputs and output ports, for its panel. */
+export interface PanelTermination {
+    kind: TerminationKind;
+    port: number;
+    core_id: number;
+    number: number;
+    cable: { id: number; code: string | null; type: CableType; cores: number; tube_size: number } | null;
 }
 
 /**

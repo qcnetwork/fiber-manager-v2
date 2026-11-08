@@ -125,7 +125,7 @@ class CableCore extends Model
         $terminations = CoreTermination::whereIn('core_id', array_unique([$firstId, $lastId]))->orderBy('id')->get()
             ->map(fn (CoreTermination $t) => $t->describe());
 
-        $at = fn (?array $asset, array $t) => $asset && $asset['kind'] === 'odp' && $t['odp'] && $asset['id'] === $t['odp']['id'];
+        $at = fn (?array $asset, array $t) => $asset && $t['location'] && $asset['kind'] === $t['location']['kind'] && $asset['id'] === $t['location']['id'];
         $startT = null;
         $endT = null;
 
