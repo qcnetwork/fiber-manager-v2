@@ -268,8 +268,20 @@ export interface Cable extends CableLine {
     area?: Pick<Area, 'id' | 'code' | 'name'>;
     from?: CableEnd | null;
     to?: CableEnd | null;
+    tube_size: number;
     /** Start, pass-through points and end, in order along the cable (only from the detail endpoint). */
     route?: CableRoutePoint[];
+    /** One row per core (only from the detail endpoint). */
+    core_list?: CableCore[];
+}
+
+export type CoreStatus = 'kosong' | 'terpakai' | 'rusak';
+
+export interface CableCore {
+    id: number;
+    number: number;
+    status: CoreStatus;
+    notes: string | null;
 }
 
 /**

@@ -4,6 +4,7 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\CableController;
+use App\Http\Controllers\CableCoreController;
 use App\Http\Controllers\CoverageController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
@@ -59,6 +60,7 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::patch('customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
     Route::post('customers/{customer}/move', [CustomerController::class, 'move'])->name('customers.move');
     Route::get('cables/nearby', [CableController::class, 'nearby'])->name('cables.nearby');
+    Route::patch('cable-cores/{core}', [CableCoreController::class, 'update'])->name('cable-cores.update');
     Route::apiResource('cables', CableController::class)->except('index');
     Route::post('photos', [PhotoController::class, 'store'])->name('photos.store');
     Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->name('photos.destroy');

@@ -18,7 +18,7 @@ class Cable extends Model
     use BelongsToArea, LogsActivity;
 
     protected $fillable = [
-        'area_id', 'code', 'type', 'cores', 'status', 'from_type', 'from_id', 'to_type', 'to_id', 'path', 'notes',
+        'area_id', 'code', 'type', 'cores', 'tube_size', 'status', 'from_type', 'from_id', 'to_type', 'to_id', 'path', 'notes',
     ];
 
     protected $attributes = [
@@ -48,7 +48,11 @@ class Cable extends Model
             $cable->max_lat = max(array_column($path, 0));
             $cable->min_lng = min(array_column($path, 1));
             $cable->max_lng = max(array_column($path, 1));
+            // A tube can't hold more cores than the cable has.
+            $cable->tube_size = max(1, min((int) ($cable->tube_size ?: 12), (int) $cable->cores));
         });
+
+        static::created(fn (Cable $cable) => $cable->syncCores());
     }
 
     protected function activityIgnored(): array
@@ -80,6 +84,31 @@ class Cable extends Model
     public function stops(): HasMany
     {
         return $this->hasMany(CableStop::class)->orderBy('vertex');
+    }
+
+    public function coreRows(): HasMany
+    {
+        return $this->hasMany(CableCore::class)->orderBy('number');
+    }
+
+    /**
+     * Makes one core row per core. Returns false (and changes nothing) when a core that would be removed
+     * by lowering the core count still holds information.
+     */
+    public function syncCores(): bool
+    {
+        $existing = $this->coreRows()->get()->keyBy('number');
+
+        $toRemove = $existing->filter(fn (CableCore $core) => $core->number > $this->cores);
+        if ($toRemove->contains(fn (CableCore $core) => $core->isRecorded())) {
+            return false;
+        }
+        $this->coreRows()->whereKey($toRemove->modelKeys())->delete();
+
+        $missing = collect(range(1, max(1, $this->cores)))->diff($existing->keys());
+        $this->coreRows()->createMany($missing->map(fn (int $number) => ['number' => $number])->all());
+
+        return true;
     }
 
     /**

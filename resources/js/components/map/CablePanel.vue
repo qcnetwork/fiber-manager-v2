@@ -2,7 +2,8 @@
 import StatusBadge from '@/components/map/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { cableTypes, endLabel, formatLength } from '@/lib/cables';
-import type { Cable, CableEndKind, CableRoutePoint } from '@/types';
+import { coreInfo, coreStatuses, type FiberColor } from '@/lib/cores';
+import type { Cable, CableCore, CableEndKind, CableRoutePoint } from '@/types';
 import { Pencil, Trash2, X } from '@lucide/vue';
 import { computed } from 'vue';
 
@@ -17,6 +18,7 @@ const emit = defineEmits<{
     delete: [];
     close: [];
     selectAsset: [kind: CableEndKind, id: number];
+    openCore: [core: CableCore];
 }>();
 
 const type = computed(() => cableTypes[props.cable.type]);
@@ -37,6 +39,22 @@ const route = computed<CableRoutePoint[]>(
 );
 const viaCount = computed(() => route.value.filter((p) => p.role === 'via').length);
 const roleLabel = { from: 'Awal', via: 'Lewat', to: 'Ujung' };
+
+// ---- Cores, grouped by tube
+const tubes = computed(() => {
+    const groups = new Map<number, { number: number; color: FiberColor; cores: CableCore[] }>();
+    for (const core of props.cable.core_list ?? []) {
+        const info = coreInfo(core.number, props.cable.tube_size);
+        if (!groups.has(info.tube)) groups.set(info.tube, { number: info.tube, color: info.tubeColor, cores: [] });
+        groups.get(info.tube)!.cores.push(core);
+    }
+    return [...groups.values()];
+});
+const coreCounts = computed(() => {
+    const counts = { kosong: 0, terpakai: 0, rusak: 0 };
+    for (const core of props.cable.core_list ?? []) counts[core.status]++;
+    return counts;
+});
 </script>
 
 <template>
@@ -102,6 +120,48 @@ const roleLabel = { from: 'Awal', via: 'Lewat', to: 'Ujung' };
                     </div>
                 </li>
             </ol>
+        </div>
+
+        <div v-if="cable.core_list?.length">
+            <div class="mb-2 flex items-baseline justify-between">
+                <h3 class="text-sm font-semibold">Data core</h3>
+                <span class="text-xs text-muted-foreground">
+                    {{ coreCounts.terpakai }} terpakai · {{ coreCounts.kosong }} kosong<template v-if="coreCounts.rusak">
+                        · {{ coreCounts.rusak }} rusak</template
+                    >
+                </span>
+            </div>
+            <div class="flex flex-col gap-2">
+                <div v-for="tube in tubes" :key="tube.number" class="rounded-md border">
+                    <div v-if="tubes.length > 1" class="flex items-center gap-2 border-b px-2 py-1 text-xs font-medium">
+                        <span class="core-dot size-3" :style="{ '--c': tube.color.hex }" />
+                        Tube {{ tube.number }} · {{ tube.color.name }}
+                    </div>
+                    <ul class="divide-y text-sm">
+                        <li v-for="core in tube.cores" :key="core.id">
+                            <button
+                                type="button"
+                                class="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
+                                @click="emit('openCore', core)"
+                            >
+                                <span class="w-6 text-right font-mono text-xs text-muted-foreground">{{ core.number }}</span>
+                                <span
+                                    class="core-dot size-3.5"
+                                    :class="coreInfo(core.number, cable.tube_size).striped && 'is-striped'"
+                                    :style="{ '--c': coreInfo(core.number, cable.tube_size).color.hex }"
+                                    :title="coreInfo(core.number, cable.tube_size).color.name"
+                                />
+                                <span class="min-w-0 flex-1 truncate" :class="!core.notes && 'text-muted-foreground'">
+                                    {{ core.notes ?? coreInfo(core.number, cable.tube_size).color.name }}
+                                </span>
+                                <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="coreStatuses[core.status].class">
+                                    {{ coreStatuses[core.status].label }}
+                                </span>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
 
         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">

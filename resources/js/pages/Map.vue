@@ -3,6 +3,7 @@ import NativeSelect from '@/components/NativeSelect.vue';
 import AssetForm from '@/components/map/AssetForm.vue';
 import CableForm from '@/components/map/CableForm.vue';
 import CablePanel from '@/components/map/CablePanel.vue';
+import CoreDialog from '@/components/map/CoreDialog.vue';
 import CustomerForm from '@/components/map/CustomerForm.vue';
 import CustomerPanel from '@/components/map/CustomerPanel.vue';
 import JointPanel from '@/components/map/JointPanel.vue';
@@ -28,6 +29,7 @@ import type {
     AssetKind,
     BreadcrumbItem,
     Cable,
+    CableCore,
     CableEndKind,
     CableEndpoint,
     CableLine,
@@ -388,6 +390,7 @@ function refreshSelected() {
 
 // ---- Ports
 const activePort = ref<OdpPort | null>(null);
+const activeCore = ref<CableCore | null>(null);
 function onPortSaved() {
     activePort.value = null;
     if (selected.value) select(selected.value.kind, selected.value.id);
@@ -996,6 +999,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         @edit="startCable(cableDetail)"
                         @delete="destroy"
                         @select-asset="(kind, id) => select(kind, id, true)"
+                        @open-core="(core) => (activeCore = core)"
                     />
 
                     <CableForm
@@ -1048,6 +1052,17 @@ watch([mode, selected], () => (sheetExpanded.value = false));
         </div>
 
         <PortDialog :port="activePort" :odp-code="odpDetail?.code ?? ''" @saved="onPortSaved" @close="activePort = null" />
+        <CoreDialog
+            v-if="cableDetail"
+            :cable="cableDetail"
+            :core="activeCore"
+            :can-edit="can.edit"
+            @saved="
+                activeCore = null;
+                refreshSelected();
+            "
+            @close="activeCore = null"
+        />
         <MoveCustomerDialog :customer="movingCustomer" @moved="onCustomerMoved" @close="movingCustomer = null" />
         <OltForm :pop-id="oltFormPopId" :olt="editingOlt" @saved="afterPopChange" @close="oltFormPopId = null" />
         <OltPortDialog

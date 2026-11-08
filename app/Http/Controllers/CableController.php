@@ -12,13 +12,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class CableController extends Controller
 {
     public function show(Cable $cable): JsonResponse
     {
         // Ends can be a POP (an area, located by center_lat/lng), so columns aren't picked in the query.
-        $cable->load(['area:id,code,name', 'from', 'to', 'stops.asset']);
+        $cable->load(['area:id,code,name', 'from', 'to', 'stops.asset', 'coreRows']);
         $end = fn ($asset) => $asset ? [
             'id' => $asset->id,
             'code' => $asset instanceof Area ? $asset->name : $asset->code,
@@ -27,10 +28,11 @@ class CableController extends Controller
         ] : null;
 
         return response()->json(['cable' => [
-            ...Arr::except($cable->toArray(), 'stops'),
+            ...Arr::except($cable->toArray(), ['stops', 'core_rows']),
             'from' => $end($cable->from),
             'to' => $end($cable->to),
             'route' => $cable->route(),
+            'core_list' => $cable->coreRows->map->only('id', 'number', 'status', 'notes')->values(),
         ]]);
     }
 
@@ -78,6 +80,12 @@ class CableController extends Controller
         DB::transaction(function () use ($cable, $data, $stops) {
             $cable->update($data);
             $cable->syncStops($stops);
+
+            if (! $cable->syncCores()) {
+                throw ValidationException::withMessages([
+                    'cores' => 'Jumlah core tidak bisa dikurangi: core bernomor di atas '.$cable->cores.' masih punya data (status/keterangan/sambungan).',
+                ]);
+            }
         });
 
         return back();

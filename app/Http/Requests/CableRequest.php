@@ -30,6 +30,7 @@ class CableRequest extends FormRequest
             'code' => ['nullable', 'string', 'max:100', Rule::unique('cables', 'code')->ignore($this->route('cable'))],
             'type' => ['required', Rule::enum(CableType::class)],
             'cores' => ['required', 'integer', Rule::in([1, 2, 4, 6, 8, 12, 24, 48, 72, 96, 144, 288])],
+            'tube_size' => ['nullable', 'integer', Rule::in([1, 2, 4, 6, 8, 12, 24])],
             'status' => ['required', Rule::enum(AssetStatus::class)],
             'path' => ['required', 'array', 'min:2', 'max:2000'],
             'path.*' => ['required', 'array', 'size:2'],
