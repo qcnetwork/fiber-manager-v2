@@ -6,6 +6,7 @@ use App\Models\Area;
 use App\Models\Cable;
 use App\Models\Customer;
 use App\Models\Odc;
+use App\Models\SpliceBox;
 use App\Models\Odp;
 use App\Models\OltPort;
 use App\Services\CoverageService;
@@ -73,6 +74,10 @@ class MapController extends Controller
             ->with('odc:id,lat,lng')
             ->get(['id', 'odc_id', 'code', 'name', 'lat', 'lng', 'status', 'capacity']);
 
+        // Joint boxes/rosettes are route details: not shown on the sales coverage map.
+        $joints = $request->user()->isSales() ? collect() : $inView(SpliceBox::query())
+            ->get(['id', 'type', 'code', 'name', 'lat', 'lng', 'status']);
+
         // A cable is in view when its bounding box overlaps the viewport.
         $cables = Cable::query()
             ->where('min_lat', '<=', $north)->where('max_lat', '>=', $south)
@@ -98,7 +103,8 @@ class MapController extends Controller
                 ...$odp->only('id', 'odc_id', 'code', 'name', 'lat', 'lng', 'status', 'capacity', 'used_ports', 'free_ports'),
                 'odc_latlng' => $odp->odc ? [$odp->odc->lat, $odp->odc->lng] : null,
             ]),
-            'truncated' => $odcs->count() >= self::FEATURE_LIMIT || $odps->count() >= self::FEATURE_LIMIT,
+            'joints' => $joints,
+            'truncated' => $odcs->count() >= self::FEATURE_LIMIT || $odps->count() >= self::FEATURE_LIMIT || $joints->count() >= self::FEATURE_LIMIT,
         ]);
     }
 
@@ -194,6 +200,9 @@ class MapController extends Controller
         $odps = $find(Odp::query(), ['code', 'name'], array_keys($odpFields), 10)
             ->get(['id', 'code', 'name', 'lat', 'lng', 'address', 'notes', 'pole_number']);
 
+        $joints = $user->isSales() ? collect() : $find(SpliceBox::query(), ['code', 'name'], array_keys($odpFields), 10)
+            ->get(['id', 'type', 'code', 'name', 'lat', 'lng', 'address', 'notes', 'pole_number']);
+
         // Sales can search the network but never customers.
         $customerFields = ['address' => 'Alamat', 'ont_sn' => 'SN ONT', 'package' => 'Paket'];
         $customers = $user->isSales() ? collect() : $find(Customer::query(), ['name', 'customer_code', 'phone'], array_keys($customerFields), 10)
@@ -229,6 +238,10 @@ class MapController extends Controller
             ...$odps->map(fn (Odp $odp) => [
                 'kind' => 'odp', 'id' => $odp->id, 'code' => $odp->code, 'name' => $odp->name, 'lat' => $odp->lat, 'lng' => $odp->lng,
                 'detail' => $detail($odp, $odpFields),
+            ]),
+            ...$joints->map(fn (SpliceBox $joint) => [
+                'kind' => 'joint', 'id' => $joint->id, 'code' => $joint->code, 'name' => $joint->type->label(), 'lat' => $joint->lat, 'lng' => $joint->lng,
+                'detail' => $detail($joint, $odpFields),
             ]),
             ...$customers->map(fn (Customer $c) => [
                 'kind' => 'customer',

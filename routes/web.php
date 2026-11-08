@@ -16,6 +16,7 @@ use App\Http\Controllers\OltController;
 use App\Http\Controllers\OltPortController;
 use App\Http\Controllers\PhotoController;
 use App\Http\Controllers\PopController;
+use App\Http\Controllers\SpliceBoxController;
 use App\Http\Middleware\EnsureNotSales;
 use App\Http\Middleware\EnsureSuperAdmin;
 use Illuminate\Support\Facades\Route;
@@ -50,6 +51,7 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::get('odcs/options', [OdcController::class, 'options'])->name('odcs.options');
     Route::apiResource('odcs', OdcController::class)->except('index');
     Route::apiResource('odps', OdpController::class)->except('index');
+    Route::apiResource('joints', SpliceBoxController::class)->except('index');
     Route::patch('ports/{port}', [OdpPortController::class, 'update'])->name('ports.update');
     Route::get('odps/{odp}/free-ports', [CustomerController::class, 'freePorts'])->name('odps.free-ports');
     Route::get('map/customers', [CustomerController::class, 'markers'])->name('map.customers');

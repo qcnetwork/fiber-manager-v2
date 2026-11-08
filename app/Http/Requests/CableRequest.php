@@ -12,6 +12,9 @@ use Illuminate\Validation\Rule;
 
 class CableRequest extends FormRequest
 {
+    /** What a cable end or pass-through point can attach to (morph aliases). */
+    public const ASSET_TYPES = ['pop', 'odc', 'odp', 'joint'];
+
     public function authorize(): bool
     {
         return $this->user()->canEditNetwork();
@@ -32,14 +35,14 @@ class CableRequest extends FormRequest
             'path.*' => ['required', 'array', 'size:2'],
             'path.*.0' => ['required', 'numeric', 'between:-90,90'],
             'path.*.1' => ['required', 'numeric', 'between:-180,180'],
-            'from_type' => ['nullable', 'required_with:from_id', Rule::in(['pop', 'odc', 'odp'])],
+            'from_type' => ['nullable', 'required_with:from_id', Rule::in(self::ASSET_TYPES)],
             'from_id' => ['nullable', 'integer', $this->assetInArea()],
-            'to_type' => ['nullable', 'required_with:to_id', Rule::in(['pop', 'odc', 'odp'])],
+            'to_type' => ['nullable', 'required_with:to_id', Rule::in(self::ASSET_TYPES)],
             'to_id' => ['nullable', 'integer', $this->assetInArea()],
             // POPs/ODCs/ODPs the cable passes through, each pinned to a vertex of the path.
             'stops' => ['nullable', 'array', 'max:500'],
             'stops.*.vertex' => ['required', 'integer', 'min:0', 'distinct'],
-            'stops.*.type' => ['required', Rule::in(['pop', 'odc', 'odp'])],
+            'stops.*.type' => ['required', Rule::in(self::ASSET_TYPES)],
             'stops.*.id' => ['required', 'integer', $this->assetInArea()],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];

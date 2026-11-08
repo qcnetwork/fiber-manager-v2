@@ -134,3 +134,22 @@ export const midpointIcon = L.divIcon({
     iconSize: [10, 10],
     iconAnchor: [5, 5],
 });
+
+/**
+ * Joint box / rosette marker: a small diamond (joint box) or circle (rosette) in teal, labelled JB/RS.
+ */
+export function jointIcon(type: string, status: string, selected = false): L.DivIcon {
+    const size = selected ? 24 : 18;
+    const color = status === 'rusak' ? '#7c3aed' : status === 'rencana' ? '#9ca3af' : '#0f766e';
+    const roset = type === 'roset';
+    const shape = roset ? 'border-radius:9999px' : 'border-radius:3px;transform:rotate(45deg)';
+    const label = roset ? 'RS' : 'JB';
+    return L.divIcon({
+        className: '',
+        html:
+            `<div style="width:${size}px;height:${size}px;${shape};background:${color};border:${selected ? 3 : 2}px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center">` +
+            `<span style="${roset ? '' : 'transform:rotate(-45deg);'}color:#fff;font:700 7px/1 sans-serif">${label}</span></div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+    });
+}

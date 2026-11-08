@@ -17,7 +17,7 @@ class PhotoController extends Controller
         abort_unless($request->user()->canEditNetwork(), 403);
 
         $data = $request->validate([
-            'photoable_type' => ['required', Rule::in(['pop', 'odc', 'odp', 'customer'])],
+            'photoable_type' => ['required', Rule::in(['pop', 'odc', 'odp', 'joint', 'customer'])],
             'photoable_id' => ['required', 'integer'],
             'photo' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
             'caption' => ['nullable', 'string', 'max:255'],

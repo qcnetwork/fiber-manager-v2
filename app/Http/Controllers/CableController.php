@@ -44,7 +44,7 @@ class CableController extends Controller
             'lng' => ['required', 'numeric', 'between:-180,180'],
             'area_id' => ['nullable', 'integer'],
             // The asset being edited, to flag cables it is already on.
-            'kind' => ['nullable', Rule::in(['odc', 'odp'])],
+            'kind' => ['nullable', Rule::in(['odc', 'odp', 'joint'])],
             'id' => ['nullable', 'integer'],
         ]);
 

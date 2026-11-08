@@ -134,6 +134,33 @@ export interface Odp extends AssetFields {
     ports?: OdpPort[];
 }
 
+export type SpliceBoxType = 'joint_box' | 'roset';
+
+/** A joint box or rosette on the map. */
+export interface JointMarker {
+    id: number;
+    type: SpliceBoxType;
+    code: string;
+    name: string | null;
+    lat: number;
+    lng: number;
+    status: AssetStatus;
+}
+
+/** A joint box or rosette: where cables are spliced together. */
+export interface SpliceBox extends Omit<AssetFields, 'capacity' | 'splitter_ratio'> {
+    type: SpliceBoxType;
+    pole_number: string | null;
+    /** How many splices the trays hold; optional. */
+    capacity: number | null;
+    splitter_ratio?: null;
+}
+
+export interface JointDetail {
+    joint: SpliceBox;
+    cables: { id: number; code: string | null; type: CableType; cores: number; status: AssetStatus; length_m: number }[];
+}
+
 export interface OdcDetail {
     odc: Odc;
     odps: { id: number; code: string; odc_port: number | null; capacity: number; status: AssetStatus; used_ports: number }[];
@@ -204,7 +231,7 @@ export interface NearestOdp {
     address: string | null;
 }
 
-export type AssetKind = 'odc' | 'odp';
+export type AssetKind = 'odc' | 'odp' | 'joint';
 /** What a cable end can attach to. */
 export type CableEndKind = 'pop' | AssetKind;
 export type MapItemKind = CableEndKind | 'cable' | 'customer';

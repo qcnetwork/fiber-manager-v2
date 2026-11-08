@@ -7,6 +7,7 @@ use App\Enums\CableType;
 use App\Models\Concerns\BelongsToArea;
 use App\Models\Concerns\LogsActivity;
 use App\Services\GeoService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -99,6 +100,20 @@ class Cable extends Model
     }
 
     /**
+     * Cables that start, end or pass through the asset.
+     */
+    public function scopeConnectedTo(Builder $query, Model $asset): void
+    {
+        $type = $asset->getMorphClass();
+        $id = $asset->getKey();
+
+        $query->where(fn (Builder $q) => $q
+            ->where(fn (Builder $q) => $q->where('from_type', $type)->where('from_id', $id))
+            ->orWhere(fn (Builder $q) => $q->where('to_type', $type)->where('to_id', $id))
+            ->orWhereHas('stops', fn (Builder $q) => $q->where('asset_type', $type)->where('asset_id', $id)));
+    }
+
+    /**
      * Whether the cable already starts, ends or passes through the asset.
      */
     public function connects(Model $asset): bool
@@ -136,7 +151,7 @@ class Cable extends Model
      * line gets a point on the asset (a plain bend right there is reused, else a new vertex is inserted on the
      * nearest segment) and the asset becomes a pass-through point. Does nothing when already connected.
      */
-    public function connect(Area|Odc|Odp $asset): void
+    public function connect(Area|Odc|Odp|SpliceBox $asset): void
     {
         if ($asset->lat === null || $asset->lng === null || $this->connects($asset)) {
             return;
@@ -233,7 +248,7 @@ class Cable extends Model
     /**
      * Keeps cable ends and pass-through points on a POP/ODC/ODP after it is moved, and lets go of it when it is deleted.
      */
-    public static function followEndpoint(Area|Odc|Odp $asset, bool $deleted = false): void
+    public static function followEndpoint(Area|Odc|Odp|SpliceBox $asset, bool $deleted = false): void
     {
         $type = $asset->getMorphClass();
 
