@@ -3,7 +3,11 @@
 namespace App\Http\Requests;
 
 use App\Enums\AssetStatus;
+use App\Models\Cable;
+use App\Models\Odc;
+use App\Models\Odp;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 
 /**
@@ -32,7 +36,41 @@ abstract class NetworkAssetRequest extends FormRequest
             'status' => ['required', Rule::enum(AssetStatus::class)],
             'installed_at' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            // Cables passing nearby to connect the asset to (it becomes a cable end or pass-through point).
+            'connect_cables' => ['nullable', 'array', 'max:20'],
+            'connect_cables.*' => ['integer', Rule::exists('cables', 'id')->where('area_id', $this->targetAreaId())],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'connect_cables.*.exists' => 'Kabel yang dipilih tidak ada di area ini.',
+        ];
+    }
+
+    /**
+     * Validated asset fields, without the cables to connect.
+     *
+     * @return array<string, mixed>
+     */
+    public function assetData(): array
+    {
+        return Arr::except($this->validated(), 'connect_cables');
+    }
+
+    /**
+     * Connects the saved asset to the cables the user ticked.
+     */
+    public function connectCables(Odc|Odp $asset): void
+    {
+        $ids = $this->validated('connect_cables') ?? [];
+        if ($ids) {
+            Cable::whereKey($ids)->get()->each(fn (Cable $cable) => $cable->connect($asset));
+        }
     }
 
     /**

@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { currentPosition, getJson } from '@/lib/http';
-import type { Area, AssetKind, Odc, OdcOption, Odp, OltPortStatus } from '@/types';
+import { cableTypes } from '@/lib/cables';
+import type { Area, AssetKind, CableType, Odc, OdcOption, Odp, OltPortStatus } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import { Crosshair, LoaderCircle, X } from '@lucide/vue';
 import { useDebounceFn } from '@vueuse/core';
@@ -50,7 +51,39 @@ const form = useForm({
     pole_number: odp?.pole_number ?? '',
     // ODC only: the OLT PON port feeding it
     olt_port_id: odc?.olt_port_id ?? null,
+    // Nearby cables to connect the asset to on save
+    connect_cables: [] as number[],
 });
+
+// ---- Cables passing near the marker, offered for connecting the asset to
+interface NearbyCable {
+    id: number;
+    code: string | null;
+    type: CableType;
+    cores: number;
+    distance_m: number;
+    connected: boolean;
+}
+const nearbyCables = ref<NearbyCable[]>([]);
+const nearbyRadius = ref(0);
+async function loadNearbyCables() {
+    const data = await getJson<{ radius: number; cables: NearbyCable[] }>(route('cables.nearby'), {
+        lat: form.lat,
+        lng: form.lng,
+        area_id: form.area_id,
+        kind: props.asset ? props.kind : undefined,
+        id: props.asset?.id,
+    });
+    nearbyRadius.value = data.radius;
+    nearbyCables.value = data.cables;
+    // Ticks for cables no longer in reach are dropped.
+    form.connect_cables = form.connect_cables.filter((id) => data.cables.some((c) => c.id === id && !c.connected));
+}
+onMounted(loadNearbyCables);
+watch(() => form.area_id, loadNearbyCables);
+watch(() => props.location, useDebounceFn(loadNearbyCables, 400));
+
+const cableName = (c: NearbyCable) => c.code ?? `Kabel ${cableTypes[c.type]?.label ?? c.type} #${c.id}`;
 
 // The map marker is the source of truth for the location; typed coordinates move it back.
 watch(
@@ -205,6 +238,39 @@ function submit() {
             <Label for="address">Alamat</Label>
             <Input id="address" v-model="form.address" />
             <InputError :message="form.errors.address" />
+        </div>
+
+        <div class="grid gap-1.5">
+            <Label>Sambungkan ke kabel terdekat</Label>
+            <p v-if="!nearbyCables.length" class="text-xs text-muted-foreground">
+                Tidak ada kabel dalam radius {{ nearbyRadius }} m dari lokasi ini.
+            </p>
+            <div v-else class="flex flex-col gap-1 rounded-md border p-2">
+                <label
+                    v-for="cable in nearbyCables"
+                    :key="cable.id"
+                    class="flex items-center gap-2 rounded px-1 py-1 text-sm"
+                    :class="cable.connected ? 'text-muted-foreground' : 'cursor-pointer hover:bg-muted'"
+                >
+                    <input
+                        v-if="!cable.connected"
+                        v-model="form.connect_cables"
+                        type="checkbox"
+                        :value="cable.id"
+                        class="size-4 rounded border-input"
+                    />
+                    <span v-else class="inline-block size-4 text-center text-green-600">✓</span>
+                    <span class="inline-block h-1.5 w-4 shrink-0 rounded-full" :style="{ background: cableTypes[cable.type]?.color }" />
+                    <span class="min-w-0 flex-1 truncate">{{ cableName(cable) }}</span>
+                    <span class="text-xs text-muted-foreground tabular-nums">
+                        {{ cable.connected ? 'sudah tersambung' : `${cable.distance_m} m · ${cable.cores} core` }}
+                    </span>
+                </label>
+            </div>
+            <p v-if="form.connect_cables.length" class="text-xs text-muted-foreground">
+                Jalur kabel yang dicentang akan ditarik ke {{ label }} ini dan {{ label }} tercatat sebagai titik sambung kabel tersebut.
+            </p>
+            <InputError :message="Object.entries(form.errors).find(([key]) => key.startsWith('connect_cables'))?.[1]" />
         </div>
 
         <div v-if="kind === 'odc'" class="grid gap-1.5">

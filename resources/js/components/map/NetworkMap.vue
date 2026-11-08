@@ -1,7 +1,22 @@
 <script setup lang="ts">
-import L, { baseLayers, cableStyle, cableTypes, formatLength, odcIcon, odpIcon, pickIcon, popIcon, vertexIcon } from '@/lib/leaflet';
+import L, {
+    baseLayers,
+    cableStyle,
+    cableTypes,
+    formatLength,
+    odcIcon,
+    odpIcon,
+    linkedVertexIcon,
+    midpointIcon,
+    pickIcon,
+    popIcon,
+    vertexIcon,
+} from '@/lib/leaflet';
 import type { CableEndKind, CableLine, CustomerMarker, LatLng, MapItemKind, OdcMarker, OdpMarker, PopMarker } from '@/types';
+import { endLabel } from '@/lib/cables';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+
+type DraftLink = { kind: CableEndKind; id: number };
 
 const props = defineProps<{
     odcs: OdcMarker[];
@@ -10,6 +25,8 @@ const props = defineProps<{
     selected: { kind: MapItemKind; id: number } | null;
     /** Path of the cable being drawn; while set, map clicks add vertices and existing cables ignore clicks. */
     draft: LatLng[] | null;
+    /** Per draft vertex: whether it is attached to a POP/ODC/ODP. */
+    draftLinks?: boolean[];
     pick: { lat: number; lng: number } | null;
     nearest: { lat: number; lng: number; radius: number; results: { lat: number; lng: number }[] } | null;
     center: [number, number];
@@ -29,7 +46,12 @@ const emit = defineEmits<{
     select: [kind: MapItemKind, id: number];
     click: [lat: number, lng: number];
     pickMove: [lat: number, lng: number];
-    draftMove: [index: number, lat: number, lng: number];
+    /** A vertex dropped somewhere new; `link` is the asset the user chose to attach it to, if any. */
+    draftMove: [index: number, lat: number, lng: number, link: DraftLink | null];
+    /** A click near an asset while drawing, after the user chose whether to attach it. */
+    draftAdd: [lat: number, lng: number, link: DraftLink | null];
+    /** A new vertex placed between two existing ones, ending up at `index`. */
+    draftInsert: [index: number, lat: number, lng: number, link: DraftLink | null];
     draftRemove: [index: number];
     customersToggle: [visible: boolean];
 }>();
@@ -71,14 +93,14 @@ function renderAssets() {
                 direction: 'top',
                 offset: [0, -14],
             })
-            .on('click', () => emit('select', 'pop', pop.id))
+            .on('click', (e) => onAssetClick(e, 'pop', pop.id))
             .addTo(popLayer);
     }
 
     for (const odc of props.odcs) {
         L.marker([odc.lat, odc.lng], { icon: odcIcon(odc.status, isSelected('odc', odc.id)), zIndexOffset: 1000 })
             .bindTooltip(`<b>${odc.code}</b><br>${odc.odps_count} ODP`, { direction: 'top', offset: [0, -10] })
-            .on('click', () => emit('select', 'odc', odc.id))
+            .on('click', (e) => onAssetClick(e, 'odc', odc.id))
             .addTo(odcLayer);
 
         if (odc.pop_latlng) {
@@ -95,7 +117,7 @@ function renderAssets() {
     for (const odp of props.odps) {
         L.marker([odp.lat, odp.lng], { icon: odpIcon(odp, isSelected('odp', odp.id)) })
             .bindTooltip(`<b>${odp.code}</b><br>Port ${odp.used_ports}/${odp.capacity} terpakai`, { direction: 'top', offset: [0, -8] })
-            .on('click', () => emit('select', 'odp', odp.id))
+            .on('click', (e) => onAssetClick(e, 'odp', odp.id))
             .addTo(odpLayer);
 
         if (odp.odc_latlng) {
@@ -234,14 +256,48 @@ function renderDraft() {
     L.polyline(path, { color: '#e11d48', weight: 4, dashArray: '6 6', interactive: false }).addTo(draftLayer);
 
     path.forEach(([lat, lng], index) => {
-        L.marker([lat, lng], { icon: vertexIcon, draggable: true, zIndexOffset: 3000, title: 'Geser untuk memindah, klik untuk menghapus titik' })
-            .on('dragend', (e) => {
-                const pos = (e.target as L.Marker).getLatLng();
-                emit('draftMove', index, pos.lat, pos.lng);
-            })
+        const linked = props.draftLinks?.[index] ?? false;
+        L.marker([lat, lng], {
+            icon: linked ? linkedVertexIcon : vertexIcon,
+            draggable: true,
+            zIndexOffset: 3000,
+            title: linked ? 'Tersambung ke aset · geser untuk melepas, klik untuk menghapus' : 'Geser untuk memindah, klik untuk menghapus titik',
+        })
+            .on('dragend', (e) => placeDraftPoint((e.target as L.Marker).getLatLng(), (lat, lng, link) => emit('draftMove', index, lat, lng, link)))
             .on('click', () => emit('draftRemove', index))
             .addTo(draftLayer);
     });
+
+    // A faint handle halfway along each segment: drag it (or tap it) to add a point in the middle of the cable.
+    path.forEach(([lat, lng], index) => {
+        if (index === path.length - 1) return;
+        const [nextLat, nextLng] = path[index + 1];
+        const middle = L.latLng((lat + nextLat) / 2, (lng + nextLng) / 2);
+        L.marker(middle, { icon: midpointIcon, draggable: true, zIndexOffset: 2900, title: 'Geser atau klik untuk menambah titik di sini' })
+            .on('dragend', (e) =>
+                placeDraftPoint((e.target as L.Marker).getLatLng(), (lat, lng, link) => emit('draftInsert', index + 1, lat, lng, link)),
+            )
+            .on('click', () => emit('draftInsert', index + 1, middle.lat, middle.lng, null))
+            .addTo(draftLayer);
+    });
+}
+
+/**
+ * Settles a dragged draft point: next to an asset it asks whether to attach (closing the question leaves a plain point
+ * where it was dropped); elsewhere it is a plain point.
+ */
+function placeDraftPoint(pos: L.LatLng, apply: (lat: number, lng: number, link: DraftLink | null) => void) {
+    const candidates = assetsNear(map.latLngToContainerPoint(pos));
+    if (!candidates.length) {
+        apply(pos.lat, pos.lng, null);
+        return;
+    }
+    chooseLink(
+        pos,
+        candidates,
+        (link) => apply(pos.lat, pos.lng, link),
+        () => apply(pos.lat, pos.lng, null),
+    );
 }
 
 function renderPick() {
@@ -277,19 +333,68 @@ function renderNearest() {
 
 const SNAP_PX = 20;
 
+type Candidate = DraftLink & { label: string; dist: number };
+
 /**
- * While drawing a cable, a click close to a POP/ODC/ODP counts as clicking it; exact hits are hard on a phone.
+ * POPs/ODCs/ODPs within reach of a point on screen, nearest first; exact hits on a marker are hard on a phone.
  */
-function assetNear(point: L.Point): { kind: CableEndKind; id: number } | null {
-    let best: { kind: CableEndKind; id: number; dist: number } | null = null;
-    const consider = (kind: CableEndKind, asset: { id: number; lat: number; lng: number }) => {
+function assetsNear(point: L.Point): Candidate[] {
+    const found: Candidate[] = [];
+    const consider = (kind: CableEndKind, asset: { id: number; lat: number; lng: number }, code: string) => {
         const dist = map.latLngToContainerPoint([asset.lat, asset.lng]).distanceTo(point);
-        if (dist <= SNAP_PX && (!best || dist < best.dist)) best = { kind, id: asset.id, dist };
+        if (dist <= SNAP_PX) found.push({ kind, id: asset.id, label: endLabel(kind, code), dist });
     };
-    props.pops?.forEach((pop) => consider('pop', pop));
-    props.odcs.forEach((odc) => consider('odc', odc));
-    props.odps.forEach((odp) => consider('odp', odp));
-    return best;
+    props.pops?.forEach((pop) => consider('pop', pop, pop.name));
+    props.odcs.forEach((odc) => consider('odc', odc, odc.code));
+    props.odps.forEach((odp) => consider('odp', odp, odp.code));
+    return found.sort((a, b) => a.dist - b.dist);
+}
+
+/**
+ * Asks whether a cable point near an asset is attached to it (and to which one, when several are close) or is a plain point.
+ * `onDismiss` runs when the popup is closed without an answer.
+ */
+function chooseLink(at: L.LatLng, candidates: Candidate[], onChoose: (link: DraftLink | null) => void, onDismiss?: () => void) {
+    let answered = false;
+    const popup = L.popup({ closeButton: true, autoPan: true, maxWidth: 280 });
+    const box = document.createElement('div');
+    box.className = 'flex flex-col gap-1';
+    box.innerHTML = `<div class="mb-0.5 text-xs font-semibold text-gray-600">Titik ini dekat aset. Sambungkan kabel?</div>`;
+
+    const option = (html: string, className: string, link: DraftLink | null) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `w-full rounded px-2 py-1.5 text-left text-sm ${className}`;
+        button.innerHTML = html;
+        button.addEventListener('click', () => {
+            answered = true;
+            map.closePopup(popup);
+            onChoose(link);
+        });
+        box.appendChild(button);
+    };
+
+    for (const c of candidates) {
+        option(`Sambungkan ke <b>${escapeHtml(c.label)}</b>`, 'bg-green-600 font-medium text-white hover:bg-green-700', { kind: c.kind, id: c.id });
+    }
+    option('Titik biasa, tidak disambung', 'border border-gray-300 hover:bg-gray-100', null);
+
+    popup.on('remove', () => {
+        if (!answered) onDismiss?.();
+    });
+    popup.setLatLng(at).setContent(box).openOn(map);
+}
+
+/**
+ * A click on a POP/ODC/ODP marker selects it, except while drawing a cable: then it asks whether to attach the cable there.
+ */
+function onAssetClick(e: L.LeafletMouseEvent, kind: CableEndKind, id: number) {
+    if (!props.draft) {
+        emit('select', kind, id);
+        return;
+    }
+    const at = e.latlng;
+    chooseLink(at, assetsNear(e.containerPoint), (link) => emit('draftAdd', at.lat, at.lng, link));
 }
 
 function emitBounds() {
@@ -321,9 +426,13 @@ onMounted(() => {
 
     map.on('moveend', emitBounds);
     map.on('click', (e) => {
-        const snapped = props.draft ? assetNear(e.containerPoint) : null;
-        if (snapped) emit('select', snapped.kind, snapped.id);
-        else emit('click', e.latlng.lat, e.latlng.lng);
+        const candidates = props.draft ? assetsNear(e.containerPoint) : [];
+        if (!candidates.length) {
+            emit('click', e.latlng.lat, e.latlng.lng);
+            return;
+        }
+        const at = e.latlng;
+        chooseLink(at, candidates, (link) => emit('draftAdd', at.lat, at.lng, link));
     });
 
     // The sidebar and panels change the container size without a window resize.
@@ -342,7 +451,7 @@ onBeforeUnmount(() => {
 
 watch([() => props.pops, () => props.odcs, () => props.odps, () => props.selected], renderAssets);
 watch([() => props.cables, () => props.selected], renderCables);
-watch(() => props.draft, renderDraft, { deep: true });
+watch([() => props.draft, () => props.draftLinks], renderDraft, { deep: true });
 watch(() => props.pick, renderPick, { deep: true });
 watch(() => props.nearest, renderNearest);
 watch(() => props.customers, renderCustomers);

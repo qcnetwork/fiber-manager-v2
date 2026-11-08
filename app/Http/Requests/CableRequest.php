@@ -33,9 +33,14 @@ class CableRequest extends FormRequest
             'path.*.0' => ['required', 'numeric', 'between:-90,90'],
             'path.*.1' => ['required', 'numeric', 'between:-180,180'],
             'from_type' => ['nullable', 'required_with:from_id', Rule::in(['pop', 'odc', 'odp'])],
-            'from_id' => ['nullable', 'integer', $this->endpointInArea('from')],
+            'from_id' => ['nullable', 'integer', $this->assetInArea()],
             'to_type' => ['nullable', 'required_with:to_id', Rule::in(['pop', 'odc', 'odp'])],
-            'to_id' => ['nullable', 'integer', $this->endpointInArea('to')],
+            'to_id' => ['nullable', 'integer', $this->assetInArea()],
+            // POPs/ODCs/ODPs the cable passes through, each pinned to a vertex of the path.
+            'stops' => ['nullable', 'array', 'max:500'],
+            'stops.*.vertex' => ['required', 'integer', 'min:0', 'distinct'],
+            'stops.*.type' => ['required', Rule::in(['pop', 'odc', 'odp'])],
+            'stops.*.id' => ['required', 'integer', $this->assetInArea()],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }
@@ -51,19 +56,20 @@ class CableRequest extends FormRequest
     }
 
     /**
-     * The POP/ODC/ODP a cable end is attached to must be visible to the user and in the cable's area (a POP is the area itself).
+     * A POP/ODC/ODP a cable end or pass-through point is attached to must be visible to the user and in the cable's area (a POP is the area itself).
      */
-    private function endpointInArea(string $end): Closure
+    private function assetInArea(): Closure
     {
-        return function (string $attribute, mixed $value, Closure $fail) use ($end) {
-            $class = Relation::getMorphedModel((string) $this->input("{$end}_type"));
+        return function (string $attribute, mixed $value, Closure $fail) {
+            // from_id goes with from_type, stops.3.id with stops.3.type.
+            $class = Relation::getMorphedModel((string) $this->input(preg_replace('/id$/', 'type', $attribute)));
             $asset = $class ? $class::find($value) : null;
             $areaId = $this->user()->seesAllAreas() ? (int) $this->input('area_id') : $this->user()->area_id;
 
             $assetArea = $asset instanceof Area ? $asset->id : $asset?->area_id;
 
             if (! $asset || (int) $assetArea !== $areaId) {
-                $fail('Ujung kabel harus POP/ODC/ODP di area yang sama.');
+                $fail(str_starts_with($attribute, 'stops') ? 'Titik sambung harus POP/ODC/ODP di area yang sama.' : 'Ujung kabel harus POP/ODC/ODP di area yang sama.');
             }
         };
     }

@@ -9,6 +9,7 @@ use App\Services\GeoService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class OdcController extends Controller
 {
@@ -27,14 +28,17 @@ class OdcController extends Controller
 
     public function store(OdcRequest $request): RedirectResponse
     {
-        Odc::create($request->validated());
+        DB::transaction(fn () => $request->connectCables(Odc::create($request->assetData())));
 
         return back();
     }
 
     public function update(OdcRequest $request, Odc $odc): RedirectResponse
     {
-        $odc->update($request->validated());
+        DB::transaction(function () use ($request, $odc) {
+            $odc->update($request->assetData());
+            $request->connectCables($odc);
+        });
 
         return back();
     }

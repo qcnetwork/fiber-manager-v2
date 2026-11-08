@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cableTypes, endLabel, formatLength, pathLength } from '@/lib/cables';
-import type { Area, Cable, CableEndpoint, CableType, LatLng } from '@/types';
+import type { Area, Cable, CableEndpoint, CableStopDraft, CableType, LatLng } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import { LoaderCircle, Undo2, X } from '@lucide/vue';
 import { computed, watch } from 'vue';
@@ -15,6 +15,7 @@ const props = defineProps<{
     path: LatLng[];
     from: CableEndpoint | null;
     to: CableEndpoint | null;
+    stops: CableStopDraft[];
     areas: Area[];
     canChooseArea: boolean;
     defaultAreaId: number | null;
@@ -59,6 +60,7 @@ function submit() {
         from_id: props.from?.id ?? null,
         to_type: props.to?.type ?? null,
         to_id: props.to?.id ?? null,
+        stops: props.stops.map(({ vertex, type, id }) => ({ vertex, type, id })),
     }));
 
     if (isNew) form.post(route('cables.store'), options);
@@ -66,7 +68,14 @@ function submit() {
 }
 
 const errors = computed(() => form.errors as Record<string, string>);
-const endError = computed(() => errors.value.from_id || errors.value.to_id || errors.value.from_type || errors.value.to_type);
+const endError = computed(
+    () =>
+        errors.value.from_id ||
+        errors.value.to_id ||
+        errors.value.from_type ||
+        errors.value.to_type ||
+        Object.entries(errors.value).find(([key]) => key.startsWith('stops'))?.[1],
+);
 </script>
 
 <template>
@@ -78,8 +87,12 @@ const endError = computed(() => errors.value.from_id || errors.value.to_id || er
 
         <ul class="list-disc space-y-0.5 rounded-md bg-muted p-2 pl-6 text-xs text-muted-foreground">
             <li>Klik peta untuk menambah titik jalur (ikuti jalan/tiang).</li>
-            <li>Klik ikon ODC/ODP untuk menyambung ujung kabel ke aset itu.</li>
-            <li>Geser kotak kecil untuk memindah titik, klik kotak untuk menghapusnya.</li>
+            <li>
+                Klik di dekat POP/ODC/ODP: pilih disambung ke aset itu atau jadi titik biasa. Aset yang disambung di tengah jalur tercatat sebagai
+                titik sambung yang dilewati.
+            </li>
+            <li>Geser titik untuk memindah (kalau dilepas dekat aset, akan ditanya lagi), klik titik untuk menghapusnya.</li>
+            <li>Untuk menambah titik di tengah kabel, geser atau klik kotak samar di tengah tiap ruas.</li>
         </ul>
 
         <div class="rounded-md border p-3 text-sm">
@@ -91,6 +104,10 @@ const endError = computed(() => errors.value.from_id || errors.value.to_id || er
             <div class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <span class="text-muted-foreground">Dari</span>
                 <span class="font-medium">{{ from ? endLabel(from.type, from.code) : '— titik bebas —' }}</span>
+                <template v-if="stops.length">
+                    <span class="text-muted-foreground">Lewat</span>
+                    <span class="font-medium">{{ stops.map((s) => endLabel(s.type, s.code)).join(' → ') }}</span>
+                </template>
                 <span class="text-muted-foreground">Ke</span>
                 <span class="font-medium">{{ to ? endLabel(to.type, to.code) : '— titik bebas —' }}</span>
             </div>

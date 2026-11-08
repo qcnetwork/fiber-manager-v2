@@ -56,6 +56,7 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::get('customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
     Route::patch('customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
     Route::post('customers/{customer}/move', [CustomerController::class, 'move'])->name('customers.move');
+    Route::get('cables/nearby', [CableController::class, 'nearby'])->name('cables.nearby');
     Route::apiResource('cables', CableController::class)->except('index');
     Route::post('photos', [PhotoController::class, 'store'])->name('photos.store');
     Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->name('photos.destroy');
