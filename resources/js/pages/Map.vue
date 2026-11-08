@@ -496,6 +496,15 @@ function moveCablePoint(index: number, lat: number, lng: number, link: { kind: C
     draftLinks.value[index] = target?.link ?? null;
 }
 
+/**
+ * A point added in the middle of the cable; attached and pass-through points after it keep their links since those travel with the vertex list.
+ */
+function insertCablePoint(index: number, lat: number, lng: number, link: { kind: CableEndKind; id: number } | null) {
+    const target = link ? linkTarget(link.kind, link.id) : null;
+    draft.value!.splice(index, 0, target ? [target.lat, target.lng] : [lat, lng]);
+    draftLinks.value.splice(index, 0, target?.link ?? null);
+}
+
 function removeCablePoint(index: number) {
     draft.value!.splice(index, 1);
     draftLinks.value.splice(index, 1);
@@ -641,6 +650,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         @pick-move="(lat, lng) => (pick = { lat, lng })"
                         @draft-move="moveCablePoint"
                         @draft-add="onDraftAdd"
+                        @draft-insert="insertCablePoint"
                         @draft-remove="removeCablePoint"
                     />
 

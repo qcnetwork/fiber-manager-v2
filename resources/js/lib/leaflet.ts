@@ -126,3 +126,11 @@ export const linkedVertexIcon = L.divIcon({
     iconSize: [16, 16],
     iconAnchor: [8, 8],
 });
+
+/** Halfway along a drawn cable segment: dragging or tapping it adds a point there. */
+export const midpointIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:10px;height:10px;border-radius:2px;background:rgba(255,255,255,.75);border:1.5px solid rgba(225,29,72,.6)"></div>',
+    iconSize: [10, 10],
+    iconAnchor: [5, 5],
+});

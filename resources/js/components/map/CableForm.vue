@@ -92,6 +92,7 @@ const endError = computed(
                 titik sambung yang dilewati.
             </li>
             <li>Geser titik untuk memindah (kalau dilepas dekat aset, akan ditanya lagi), klik titik untuk menghapusnya.</li>
+            <li>Untuk menambah titik di tengah kabel, geser atau klik kotak samar di tengah tiap ruas.</li>
         </ul>
 
         <div class="rounded-md border p-3 text-sm">

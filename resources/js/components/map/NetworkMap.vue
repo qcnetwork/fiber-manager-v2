@@ -7,6 +7,7 @@ import L, {
     odcIcon,
     odpIcon,
     linkedVertexIcon,
+    midpointIcon,
     pickIcon,
     popIcon,
     vertexIcon,
@@ -49,6 +50,8 @@ const emit = defineEmits<{
     draftMove: [index: number, lat: number, lng: number, link: DraftLink | null];
     /** A click near an asset while drawing, after the user chose whether to attach it. */
     draftAdd: [lat: number, lng: number, link: DraftLink | null];
+    /** A new vertex placed between two existing ones, ending up at `index`. */
+    draftInsert: [index: number, lat: number, lng: number, link: DraftLink | null];
     draftRemove: [index: number];
     customersToggle: [visible: boolean];
 }>();
@@ -260,24 +263,41 @@ function renderDraft() {
             zIndexOffset: 3000,
             title: linked ? 'Tersambung ke aset · geser untuk melepas, klik untuk menghapus' : 'Geser untuk memindah, klik untuk menghapus titik',
         })
-            .on('dragend', (e) => {
-                const pos = (e.target as L.Marker).getLatLng();
-                const candidates = assetsNear(map.latLngToContainerPoint(pos));
-                if (!candidates.length) {
-                    emit('draftMove', index, pos.lat, pos.lng, null);
-                    return;
-                }
-                // Dropped next to an asset: ask; closing the question leaves a plain point where it was dropped.
-                chooseLink(
-                    pos,
-                    candidates,
-                    (link) => emit('draftMove', index, pos.lat, pos.lng, link),
-                    () => emit('draftMove', index, pos.lat, pos.lng, null),
-                );
-            })
+            .on('dragend', (e) => placeDraftPoint((e.target as L.Marker).getLatLng(), (lat, lng, link) => emit('draftMove', index, lat, lng, link)))
             .on('click', () => emit('draftRemove', index))
             .addTo(draftLayer);
     });
+
+    // A faint handle halfway along each segment: drag it (or tap it) to add a point in the middle of the cable.
+    path.forEach(([lat, lng], index) => {
+        if (index === path.length - 1) return;
+        const [nextLat, nextLng] = path[index + 1];
+        const middle = L.latLng((lat + nextLat) / 2, (lng + nextLng) / 2);
+        L.marker(middle, { icon: midpointIcon, draggable: true, zIndexOffset: 2900, title: 'Geser atau klik untuk menambah titik di sini' })
+            .on('dragend', (e) =>
+                placeDraftPoint((e.target as L.Marker).getLatLng(), (lat, lng, link) => emit('draftInsert', index + 1, lat, lng, link)),
+            )
+            .on('click', () => emit('draftInsert', index + 1, middle.lat, middle.lng, null))
+            .addTo(draftLayer);
+    });
+}
+
+/**
+ * Settles a dragged draft point: next to an asset it asks whether to attach (closing the question leaves a plain point
+ * where it was dropped); elsewhere it is a plain point.
+ */
+function placeDraftPoint(pos: L.LatLng, apply: (lat: number, lng: number, link: DraftLink | null) => void) {
+    const candidates = assetsNear(map.latLngToContainerPoint(pos));
+    if (!candidates.length) {
+        apply(pos.lat, pos.lng, null);
+        return;
+    }
+    chooseLink(
+        pos,
+        candidates,
+        (link) => apply(pos.lat, pos.lng, link),
+        () => apply(pos.lat, pos.lng, null),
+    );
 }
 
 function renderPick() {
