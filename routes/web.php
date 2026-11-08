@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\CableController;
 use App\Http\Controllers\CableCoreController;
+use App\Http\Controllers\CoreSpliceController;
 use App\Http\Controllers\CoverageController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
@@ -61,6 +62,10 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::post('customers/{customer}/move', [CustomerController::class, 'move'])->name('customers.move');
     Route::get('cables/nearby', [CableController::class, 'nearby'])->name('cables.nearby');
     Route::patch('cable-cores/{core}', [CableCoreController::class, 'update'])->name('cable-cores.update');
+    Route::get('cable-cores/{core}/trace', [CoreSpliceController::class, 'trace'])->name('cable-cores.trace');
+    Route::get('splices', [CoreSpliceController::class, 'index'])->name('splices.index');
+    Route::post('splices', [CoreSpliceController::class, 'store'])->name('splices.store');
+    Route::delete('splices/{splice}', [CoreSpliceController::class, 'destroy'])->name('splices.destroy');
     Route::apiResource('cables', CableController::class)->except('index');
     Route::post('photos', [PhotoController::class, 'store'])->name('photos.store');
     Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->name('photos.destroy');

@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cableTypes, endLabel } from '@/lib/cables';
 import { coreInfo, coreLabel, coreStatuses } from '@/lib/cores';
-import type { Cable, CableCore, CoreStatus } from '@/types';
+import { getJson } from '@/lib/http';
+import type { Cable, CableCore, CableEndKind, CoreStatus, CoreTrace } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import { LoaderCircle } from '@lucide/vue';
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{
     cable: Cable;
@@ -19,7 +21,43 @@ const props = defineProps<{
 const emit = defineEmits<{
     saved: [];
     close: [];
+    selectCable: [id: number];
+    selectAsset: [kind: CableEndKind, id: number];
 }>();
+
+// ---- The fiber path this core is part of
+const trace = ref<CoreTrace | null>(null);
+const traceLoading = ref(false);
+watch(
+    () => props.core?.id,
+    async (id) => {
+        trace.value = null;
+        if (!id) return;
+        traceLoading.value = true;
+        try {
+            trace.value = await getJson<CoreTrace>(route('cable-cores.trace', { core: id }));
+        } finally {
+            traceLoading.value = false;
+        }
+    },
+    { immediate: true },
+);
+
+type Segment = CoreTrace['segments'][number];
+const segmentName = (s: Segment) => s.cable.code ?? `Kabel ${cableTypes[s.cable.type]?.label ?? ''} #${s.cable.id}`;
+
+/**
+ * The outer ends of the path: the cable end of the first/last segment that isn't where it is spliced.
+ */
+function outerEnd(index: number): { kind: CableEndKind; id: number; code: string } | null {
+    const t = trace.value;
+    if (!t) return null;
+    const segment = t.segments[index];
+    const join = index === 0 ? t.joins[0] : t.joins[t.joins.length - 1];
+    const ends = [segment.cable.from, segment.cable.to].filter((e) => !!e);
+    if (!join) return index === 0 ? segment.cable.from : segment.cable.to;
+    return ends.find((e) => !(e!.kind === join.kind && e!.id === join.id)) ?? null;
+}
 
 const form = useForm({ status: 'kosong' as CoreStatus, notes: '' });
 
@@ -81,6 +119,64 @@ function submit() {
                     <Label for="core_notes">Keterangan (dipakai untuk apa)</Label>
                     <Input id="core_notes" v-model="form.notes" :disabled="!canEdit" placeholder="mis. Feeder ke ODC-03 port 2" />
                     <InputError :message="form.errors.notes" />
+                </div>
+
+                <div class="grid gap-1.5">
+                    <Label>Jalur core</Label>
+                    <div v-if="traceLoading" class="flex items-center gap-2 text-sm text-muted-foreground">
+                        <LoaderCircle class="size-4 animate-spin" /> Menelusuri…
+                    </div>
+                    <p v-else-if="trace && trace.segments.length === 1" class="text-sm text-muted-foreground">
+                        Core ini belum disambung ke core kabel lain. Sambungan dibuat di panel Joint/Roset, ODC atau ODP.
+                    </p>
+                    <ol v-else-if="trace" class="rounded-md border p-2 text-sm">
+                        <li v-if="outerEnd(0)" class="pb-1 text-xs text-muted-foreground">
+                            Mulai:
+                            <button
+                                class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                @click="emit('selectAsset', outerEnd(0)!.kind, outerEnd(0)!.id)"
+                            >
+                                {{ endLabel(outerEnd(0)!.kind, outerEnd(0)!.code) }}
+                            </button>
+                        </li>
+                        <template v-for="(segment, i) in trace.segments" :key="segment.core_id">
+                            <li class="flex items-center gap-2 rounded px-1 py-1" :class="segment.core_id === core.id && 'bg-muted'">
+                                <span
+                                    class="core-dot size-3.5"
+                                    :class="coreInfo(segment.number, segment.cable.tube_size).striped && 'is-striped'"
+                                    :style="{ '--c': coreInfo(segment.number, segment.cable.tube_size).color.hex }"
+                                />
+                                <button
+                                    class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                    @click="emit('selectCable', segment.cable.id)"
+                                >
+                                    {{ segmentName(segment) }}
+                                </button>
+                                <span class="text-muted-foreground">
+                                    core {{ segment.number }} · {{ coreInfo(segment.number, segment.cable.tube_size).color.name }}
+                                </span>
+                            </li>
+                            <li v-if="trace.joins[i]" class="py-0.5 pl-6 text-xs text-muted-foreground">
+                                ↕ disambung di
+                                <button
+                                    class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                    @click="emit('selectAsset', trace.joins[i].kind, trace.joins[i].id)"
+                                >
+                                    {{ endLabel(trace.joins[i].kind, trace.joins[i].code ?? '?') }}
+                                </button>
+                                <template v-if="trace.joins[i].notes"> ({{ trace.joins[i].notes }})</template>
+                            </li>
+                        </template>
+                        <li v-if="outerEnd(trace.segments.length - 1)" class="pt-1 text-xs text-muted-foreground">
+                            Selesai:
+                            <button
+                                class="font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                @click="emit('selectAsset', outerEnd(trace.segments.length - 1)!.kind, outerEnd(trace.segments.length - 1)!.id)"
+                            >
+                                {{ endLabel(outerEnd(trace.segments.length - 1)!.kind, outerEnd(trace.segments.length - 1)!.code) }}
+                            </button>
+                        </li>
+                    </ol>
                 </div>
 
                 <DialogFooter v-if="canEdit" class="gap-2">

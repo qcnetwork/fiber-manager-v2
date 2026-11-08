@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { cableTypes, endLabel, formatLength } from '@/lib/cables';
 import { coreInfo, coreStatuses, type FiberColor } from '@/lib/cores';
 import type { Cable, CableCore, CableEndKind, CableRoutePoint } from '@/types';
-import { Pencil, Trash2, X } from '@lucide/vue';
+import { Link2, Pencil, Trash2, X } from '@lucide/vue';
 import { computed } from 'vue';
 
 const props = defineProps<{
@@ -154,6 +154,7 @@ const coreCounts = computed(() => {
                                 <span class="min-w-0 flex-1 truncate" :class="!core.notes && 'text-muted-foreground'">
                                     {{ core.notes ?? coreInfo(core.number, cable.tube_size).color.name }}
                                 </span>
+                                <Link2 v-if="core.splices" class="size-3.5 shrink-0 text-green-600" :title="`Disambung (${core.splices}×)`" />
                                 <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="coreStatuses[core.status].class">
                                     {{ coreStatuses[core.status].label }}
                                 </span>

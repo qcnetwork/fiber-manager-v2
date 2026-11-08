@@ -282,6 +282,45 @@ export interface CableCore {
     number: number;
     status: CoreStatus;
     notes: string | null;
+    /** How many splices the core takes part in (0–2). */
+    splices?: number;
+}
+
+/** Cables at a splice location with their cores, and the splices made there. */
+export interface SpliceData {
+    max_splices: number;
+    cables: {
+        id: number;
+        code: string | null;
+        type: CableType;
+        cores: number;
+        tube_size: number;
+        cores_list: (CableCore & { splices: number; spliced_here: boolean })[];
+    }[];
+    splices: {
+        id: number;
+        notes: string | null;
+        a: { core_id: number; cable_id: number; number: number };
+        b: { core_id: number; cable_id: number; number: number };
+    }[];
+}
+
+interface TraceEnd {
+    kind: CableEndKind;
+    id: number;
+    code: string;
+}
+
+/** A fiber path: cores in order, joined by splices (`joins[i]` sits between `segments[i]` and `segments[i + 1]`). */
+export interface CoreTrace {
+    segments: {
+        core_id: number;
+        number: number;
+        status: CoreStatus;
+        notes: string | null;
+        cable: { id: number; code: string | null; type: CableType; cores: number; tube_size: number; from: TraceEnd | null; to: TraceEnd | null };
+    }[];
+    joins: { splice_id: number; kind: CableEndKind; id: number; code: string | null; notes: string | null }[];
 }
 
 /**

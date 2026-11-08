@@ -9,6 +9,7 @@ export const activityTypes: Record<string, string> = {
     odp: 'ODP',
     odp_port: 'Port ODP',
     joint: 'Joint box/Roset',
+    splice: 'Sambungan core',
     customer: 'Pelanggan',
     cable: 'Kabel',
     photo: 'Foto',

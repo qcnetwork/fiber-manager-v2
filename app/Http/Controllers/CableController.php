@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\CableRequest;
 use App\Models\Area;
 use App\Models\Cable;
+use App\Models\CableCore;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -27,12 +28,17 @@ class CableController extends Controller
             'lng' => $asset->lng,
         ] : null;
 
+        $spliceCounts = CableCore::spliceCounts($cable->coreRows->modelKeys());
+
         return response()->json(['cable' => [
             ...Arr::except($cable->toArray(), ['stops', 'core_rows']),
             'from' => $end($cable->from),
             'to' => $end($cable->to),
             'route' => $cable->route(),
-            'core_list' => $cable->coreRows->map->only('id', 'number', 'status', 'notes')->values(),
+            'core_list' => $cable->coreRows->map(fn (CableCore $core) => [
+                ...$core->only('id', 'number', 'status', 'notes'),
+                'splices' => $spliceCounts[$core->id] ?? 0,
+            ])->values(),
         ]]);
     }
 

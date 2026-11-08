@@ -913,6 +913,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         @open-port="(port) => (activePort = port)"
                         @refresh="refreshSelected"
                         @select-odc="(id) => select('odc', id, true)"
+                        @select-cable="(id) => select('cable', id, true)"
                         @open-customer="(id) => select('customer', id, true)"
                     />
 
@@ -951,6 +952,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         @refresh="refreshSelected"
                         @select-odp="(id) => select('odp', id, true)"
                         @select-pop="(id) => select('pop', id, true)"
+                        @select-cable="(id) => select('cable', id, true)"
                     />
 
                     <JointPanel
@@ -1062,6 +1064,18 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                 refreshSelected();
             "
             @close="activeCore = null"
+            @select-cable="
+                (id) => {
+                    activeCore = null;
+                    select('cable', id, true);
+                }
+            "
+            @select-asset="
+                (kind, id) => {
+                    activeCore = null;
+                    select(kind, id, true);
+                }
+            "
         />
         <MoveCustomerDialog :customer="movingCustomer" @moved="onCustomerMoved" @close="movingCustomer = null" />
         <OltForm :pop-id="oltFormPopId" :olt="editingOlt" @saved="afterPopChange" @close="oltFormPopId = null" />

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CoreSplices from '@/components/map/CoreSplices.vue';
 import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import StatusBadge from '@/components/map/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ const emit = defineEmits<{
     addOdp: [];
     selectOdp: [id: number];
     selectPop: [id: number];
+    selectCable: [id: number];
 }>();
 
 const odc = computed(() => props.detail.odc);
@@ -97,6 +99,8 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
             </ul>
             <p v-else class="text-sm text-muted-foreground">Belum ada ODP yang terhubung.</p>
         </div>
+
+        <CoreSplices kind="odc" :id="odc.id" :can-edit="canEdit" @select-cable="(id) => emit('selectCable', id)" />
 
         <PhotoGallery
             owner-type="odc"
