@@ -54,7 +54,11 @@ function rowText(row: Row): string {
 
 const visibleRows = computed(() => {
     const q = query.value.trim().toLowerCase();
-    return props.rows.filter((row) => (!onlySpliced.value || row.trace.segments.length > 1) && (!q || rowText(row).includes(q)));
+    return props.rows.filter(
+        (row) =>
+            (!onlySpliced.value || row.trace.segments.length > 1 || row.trace.start_termination || row.trace.end_termination) &&
+            (!q || rowText(row).includes(q)),
+    );
 });
 
 /** Is this splice point the location the sheet is about? */
@@ -134,7 +138,17 @@ function printSheet() {
                         </tr>
                     </thead>
                     <tbody class="divide-y">
-                        <tr v-for="(row, i) in visibleRows" :key="row.splice_id ?? row.a.core_id" class="break-inside-avoid align-top">
+                        <tr
+                            v-for="(row, i) in visibleRows"
+                            :key="
+                                row.splice_id
+                                    ? `s${row.splice_id}`
+                                    : row.termination
+                                      ? `t${row.termination.termination_id}`
+                                      : `c${row.a.core_id}:${row.trace.pieces.join(',')}`
+                            "
+                            class="break-inside-avoid align-top"
+                        >
                             <td class="px-2 py-1.5 text-muted-foreground tabular-nums">{{ i + 1 }}</td>
 
                             <template v-if="isCable">
@@ -200,7 +214,7 @@ function printSheet() {
                             <!-- The full path: cable/core, splice point, cable/core, … -->
                             <td class="px-2 py-1.5">
                                 <span class="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                                    <template v-for="(segment, s) in row.trace.segments" :key="segment.core_id">
+                                    <template v-for="(segment, s) in row.trace.segments" :key="segment.piece">
                                         <span class="inline-flex items-center gap-1 rounded border px-1 whitespace-nowrap">
                                             <span
                                                 class="core-dot size-2.5"

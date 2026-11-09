@@ -22,7 +22,7 @@ class CoreTermination extends Model
     /** Splitter inputs an ODP/ODC can have. */
     public const MAX_INPUTS = 4;
 
-    protected $fillable = ['core_id', 'location_type', 'location_id', 'kind', 'port', 'notes'];
+    protected $fillable = ['core_id', 'side', 'location_type', 'location_id', 'kind', 'port', 'notes'];
 
     protected function casts(): array
     {

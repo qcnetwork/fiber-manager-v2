@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { cableTypes } from '@/lib/cables';
 import { coreInfo, terminationLabel } from '@/lib/cores';
 import { getJson } from '@/lib/http';
-import type { CableEndKind, SpliceData } from '@/types';
+import type { CableEndKind, CoreSide, SpliceData } from '@/types';
 import { router } from '@inertiajs/vue3';
 import { FileText, LoaderCircle, Plus, Trash2 } from '@lucide/vue';
 import { computed, onMounted, ref, watch } from 'vue';
@@ -51,12 +51,24 @@ function coreColor(cableId: number, number: number) {
     return cable ? coreInfo(number, cable.tube_size) : null;
 }
 
+/** Ways a core of the cable can be taken here: one at a cable end, two where the cable passes through. */
+const sidesOf = (cableId: number | null) => (cableId ? (cableById.value.get(cableId)?.sides ?? []) : []);
+const sideLabel = (s: { toward: string | null }) => `Arah ke ${s.toward ?? 'ujung kabel'}`;
+/** "arah ke ODP-05" for a cable passing through here; nothing at a cable end, where there's only one way. */
+function sideText(cableId: number, side: CoreSide) {
+    const sides = sidesOf(cableId);
+    const s = sides.find((x) => x.side === side);
+    return sides.length > 1 && s ? sideLabel(s).toLowerCase() : '';
+}
+
 // ---- Adding: core A from cable A spliced to core B from cable B, optionally a run of consecutive cores
 const adding = ref(false);
 const form = ref({
     cableA: null as number | null,
+    sideA: 'to' as CoreSide,
     coreA: null as number | null,
     cableB: null as number | null,
+    sideB: 'to' as CoreSide,
     coreB: null as number | null,
     count: 1,
     notes: '',
@@ -64,27 +76,45 @@ const form = ref({
 const error = ref('');
 const saving = ref(false);
 
+/** The first way of the cable that still has a free core. */
+function defaultSide(cableId: number | null): CoreSide {
+    const sides = sidesOf(cableId);
+    return (sides.find((s) => freeCores(cableId, s.side).length) ?? sides[0])?.side ?? 'to';
+}
+
 function startAdding() {
     const cables = data.value?.cables ?? [];
-    form.value = { cableA: cables[0]?.id ?? null, coreA: null, cableB: cables[1]?.id ?? cables[0]?.id ?? null, coreB: null, count: 1, notes: '' };
+    const cableA = cables[0]?.id ?? null;
+    const cableB = cables[1]?.id ?? cables[0]?.id ?? null;
+    form.value = { cableA, sideA: defaultSide(cableA), coreA: null, cableB, sideB: defaultSide(cableB), coreB: null, count: 1, notes: '' };
+    // Splicing a cable to itself where it passes through: take the other way for B.
+    if (cableA === cableB && sidesOf(cableA).length > 1) form.value.sideB = form.value.sideA === 'to' ? 'from' : 'to';
     error.value = '';
     adding.value = true;
 }
 
-/** Cores still free to splice here: not spliced at this location and not already spliced at both ends. */
-function freeCores(cableId: number | null) {
+/** Cores still free here in that direction. */
+function freeCores(cableId: number | null, side: CoreSide) {
     const cable = cableId ? cableById.value.get(cableId) : undefined;
-    return (cable?.cores_list ?? []).filter((c) => !c.spliced_here && c.splices < (data.value?.max_splices ?? 2));
+    return (cable?.cores_list ?? []).filter((c) => !c.used_sides.includes(side));
 }
-const freeA = computed(() => freeCores(form.value.cableA));
-const freeB = computed(() => freeCores(form.value.cableB));
+const freeA = computed(() => freeCores(form.value.cableA, form.value.sideA));
+const freeB = computed(() => freeCores(form.value.cableB, form.value.sideB));
 
 watch(
     () => form.value.cableA,
-    () => (form.value.coreA = freeA.value[0]?.number ?? null),
+    (id) => (form.value.sideA = defaultSide(id)),
 );
 watch(
     () => form.value.cableB,
+    (id) => (form.value.sideB = defaultSide(id)),
+);
+watch(
+    () => [form.value.cableA, form.value.sideA],
+    () => (form.value.coreA = freeA.value[0]?.number ?? null),
+);
+watch(
+    () => [form.value.cableB, form.value.sideB],
     () => {
         // Splicing a cable to itself: start B on another core than A.
         const options = freeB.value.filter((c) => !(form.value.cableA === form.value.cableB && c.number === form.value.coreA));
@@ -114,7 +144,14 @@ function save() {
     error.value = '';
     router.post(
         route('splices.store'),
-        { location_type: props.kind, location_id: props.id, pairs: pairs.value.map(({ a, b }) => ({ a, b })), notes: form.value.notes || null },
+        {
+            location_type: props.kind,
+            location_id: props.id,
+            pairs: pairs.value.map(({ a, b }) => ({ a, b })),
+            side_a: form.value.sideA,
+            side_b: form.value.sideB,
+            notes: form.value.notes || null,
+        },
         {
             preserveScroll: true,
             preserveState: true,
@@ -135,17 +172,22 @@ function remove(spliceId: number) {
 
 // ---- ODP only: a core ending on a splitter input or straight on an output port
 const terminating = ref(false);
-const termForm = ref({ cable: null as number | null, core: null as number | null, target: '' as string, notes: '' });
+const termForm = ref({ cable: null as number | null, side: 'to' as CoreSide, core: null as number | null, target: '' as string, notes: '' });
 const termError = ref('');
 
 function startTerminating() {
-    termForm.value = { cable: data.value?.cables[0]?.id ?? null, core: null, target: targets.value.find((t) => !t.taken)?.value ?? '', notes: '' };
+    const cable = data.value?.cables[0]?.id ?? null;
+    termForm.value = { cable, side: defaultSide(cable), core: null, target: targets.value.find((t) => !t.taken)?.value ?? '', notes: '' };
     termError.value = '';
     terminating.value = true;
 }
-const freeTerm = computed(() => freeCores(termForm.value.cable));
+const freeTerm = computed(() => freeCores(termForm.value.cable, termForm.value.side));
 watch(
     () => termForm.value.cable,
+    (id) => (termForm.value.side = defaultSide(id)),
+);
+watch(
+    () => [termForm.value.cable, termForm.value.side],
     () => (termForm.value.core = freeTerm.value[0]?.number ?? null),
 );
 
@@ -175,7 +217,15 @@ function saveTermination() {
     termError.value = '';
     router.post(
         route('terminations.store'),
-        { location_type: props.kind, location_id: props.id, core_id: core.id, kind, port: Number(port), notes: termForm.value.notes || null },
+        {
+            location_type: props.kind,
+            location_id: props.id,
+            core_id: core.id,
+            side: termForm.value.side,
+            kind,
+            port: Number(port),
+            notes: termForm.value.notes || null,
+        },
         {
             preserveScroll: true,
             preserveState: true,
@@ -239,6 +289,12 @@ function removeTermination(id: number) {
                             <option v-for="c in freeA" :key="c.id" :value="c.number">{{ coreText(form.cableA!, c.number) }}</option>
                         </NativeSelect>
                     </div>
+                    <div v-if="sidesOf(form.cableA).length > 1" class="col-span-2 grid gap-1">
+                        <Label class="text-xs">Arah core kabel A (kabel lewat di sini)</Label>
+                        <NativeSelect v-model="form.sideA">
+                            <option v-for="s in sidesOf(form.cableA)" :key="s.side" :value="s.side">{{ sideLabel(s) }}</option>
+                        </NativeSelect>
+                    </div>
                     <div class="grid gap-1">
                         <Label class="text-xs">Kabel B</Label>
                         <NativeSelect v-model.number="form.cableB">
@@ -249,6 +305,12 @@ function removeTermination(id: number) {
                         <Label class="text-xs">Core</Label>
                         <NativeSelect v-model.number="form.coreB" class="w-28">
                             <option v-for="c in freeB" :key="c.id" :value="c.number">{{ coreText(form.cableB!, c.number) }}</option>
+                        </NativeSelect>
+                    </div>
+                    <div v-if="sidesOf(form.cableB).length > 1" class="col-span-2 grid gap-1">
+                        <Label class="text-xs">Arah core kabel B (kabel lewat di sini)</Label>
+                        <NativeSelect v-model="form.sideB">
+                            <option v-for="s in sidesOf(form.cableB)" :key="s.side" :value="s.side">{{ sideLabel(s) }}</option>
                         </NativeSelect>
                     </div>
                 </div>
@@ -298,6 +360,9 @@ function removeTermination(id: number) {
                                 :style="{ '--c': coreColor(s.a.cable_id, s.a.number)!.color.hex }"
                             />
                             <span class="tabular-nums">{{ coreText(s.a.cable_id, s.a.number) }}</span>
+                            <span v-if="sideText(s.a.cable_id, s.a.side)" class="text-xs text-muted-foreground"
+                                >({{ sideText(s.a.cable_id, s.a.side) }})</span
+                            >
                             <span class="text-muted-foreground">↔</span>
                             <button class="font-medium text-blue-600 hover:underline dark:text-blue-400" @click="emit('selectCable', s.b.cable_id)">
                                 {{ cableName(cableById.get(s.b.cable_id)) }}
@@ -309,6 +374,9 @@ function removeTermination(id: number) {
                                 :style="{ '--c': coreColor(s.b.cable_id, s.b.number)!.color.hex }"
                             />
                             <span class="tabular-nums">{{ coreText(s.b.cable_id, s.b.number) }}</span>
+                            <span v-if="sideText(s.b.cable_id, s.b.side)" class="text-xs text-muted-foreground"
+                                >({{ sideText(s.b.cable_id, s.b.side) }})</span
+                            >
                         </div>
                         <div v-if="s.notes" class="text-xs text-muted-foreground">{{ s.notes }}</div>
                     </div>
@@ -340,6 +408,12 @@ function removeTermination(id: number) {
                             <Label class="text-xs">Core</Label>
                             <NativeSelect v-model.number="termForm.core" class="w-28">
                                 <option v-for="c in freeTerm" :key="c.id" :value="c.number">{{ coreText(termForm.cable!, c.number) }}</option>
+                            </NativeSelect>
+                        </div>
+                        <div v-if="sidesOf(termForm.cable).length > 1" class="col-span-2 grid gap-1">
+                            <Label class="text-xs">Arah core (kabel lewat di sini)</Label>
+                            <NativeSelect v-model="termForm.side">
+                                <option v-for="s in sidesOf(termForm.cable)" :key="s.side" :value="s.side">{{ sideLabel(s) }}</option>
                             </NativeSelect>
                         </div>
                     </div>
@@ -398,6 +472,9 @@ function removeTermination(id: number) {
                                     :style="{ '--c': coreColor(t.core.cable_id, t.core.number)!.color.hex }"
                                 />
                                 <span class="tabular-nums">{{ coreText(t.core.cable_id, t.core.number) }}</span>
+                                <span v-if="sideText(t.core.cable_id, t.core.side)" class="text-xs text-muted-foreground"
+                                    >({{ sideText(t.core.cable_id, t.core.side) }})</span
+                                >
                                 <span class="text-muted-foreground">→</span>
                                 <span class="font-medium">
                                     {{

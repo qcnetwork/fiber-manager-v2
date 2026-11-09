@@ -51,7 +51,7 @@ class SpliceSheetController extends Controller
                 'notes' => $s->notes,
                 'a' => $s->coreA->describe(),
                 'b' => $s->coreB->describe(),
-                'trace' => $s->coreA->trace(),
+                'trace' => $s->coreA->trace($s->location_type, (int) $s->location_id, $s->core_a_side),
             ])
             ->merge($terminations->toBase()->map(fn (CoreTermination $t) => [
                 'splice_id' => null,
@@ -59,7 +59,7 @@ class SpliceSheetController extends Controller
                 'notes' => $t->notes,
                 'a' => $t->core->describe(),
                 'b' => null,
-                'trace' => $t->core->trace(),
+                'trace' => $t->core->trace($t->location_type, $t->location_id, $t->side),
             ]))
             // Grouped by the first cable, in core order, like a paper splice sheet.
             ->sortBy(fn (array $row) => sprintf('%s|%05d', $row['a']['cable']['code'] ?? '~'.$row['a']['cable']['id'], $row['a']['number']))
@@ -104,14 +104,15 @@ class SpliceSheetController extends Controller
                 'area' => $cable->area?->name,
             ],
             'cables' => [[...$cable->only('id', 'code', 'type', 'cores', 'tube_size'), 'spliced_here' => 0]],
-            'rows' => $cable->coreRows->map(fn (CableCore $core) => [
+            // A core cut along the way gets a row per piece.
+            'rows' => $cable->coreRows->flatMap(fn (CableCore $core) => array_map(fn (array $trace) => [
                 'splice_id' => null,
                 'termination' => null,
                 'notes' => null,
                 'a' => $core->describe(),
                 'b' => null,
-                'trace' => $core->trace(),
-            ])->values(),
+                'trace' => $trace,
+            ], $core->traces()))->values(),
             'generatedAt' => now()->format('d-m-Y H:i'),
         ]);
     }

@@ -8,11 +8,14 @@ use App\Models\Area;
 use App\Models\Cable;
 use App\Models\CableCore;
 use App\Models\CoreSplice;
+use App\Models\CoreTermination;
+use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\SpliceBox;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class CoreSpliceTest extends TestCase
@@ -61,7 +64,7 @@ class CoreSpliceTest extends TestCase
         return $cable->coreRows()->where('number', $number)->sole();
     }
 
-    private function splice(string $type, int $id, array $pairs): \Illuminate\Testing\TestResponse
+    private function splice(string $type, int $id, array $pairs): TestResponse
     {
         return $this->post('/splices', [
             'location_type' => $type, 'location_id' => $id,
@@ -69,7 +72,7 @@ class CoreSpliceTest extends TestCase
         ]);
     }
 
-    private function terminate(string $type, int $id, CableCore $core, string $kind, int $port): \Illuminate\Testing\TestResponse
+    private function terminate(string $type, int $id, CableCore $core, string $kind, int $port): TestResponse
     {
         return $this->post('/terminations', ['location_type' => $type, 'location_id' => $id, 'core_id' => $core->id, 'kind' => $kind, 'port' => $port]);
     }
@@ -89,8 +92,8 @@ class CoreSpliceTest extends TestCase
         $this->assertSame(['DST-01', 'FDR-01'], array_column($data['cables'], 'code'));
         $this->assertCount(2, $data['splices']);
         $feederCores = collect($data['cables'])->firstWhere('code', 'FDR-01')['cores_list'];
-        $this->assertTrue($feederCores[0]['spliced_here']);
-        $this->assertFalse($feederCores[2]['spliced_here']);
+        $this->assertSame(['from'], $feederCores[0]['used_sides']); // the feeder ends here: back towards its start
+        $this->assertSame([], $feederCores[2]['used_sides']);
     }
 
     public function test_only_cables_reaching_the_location_can_be_spliced_there()
@@ -102,7 +105,7 @@ class CoreSpliceTest extends TestCase
         $this->assertSame(0, CoreSplice::count());
     }
 
-    public function test_a_core_is_spliced_once_per_location_and_at_most_twice()
+    public function test_a_core_is_spliced_once_per_location_and_direction()
     {
         $f1 = $this->core($this->feeder, 1);
         $this->splice('joint', $this->joint->id, [[$f1, $this->core($this->distribution, 1)]])->assertSessionHasNoErrors();
@@ -123,7 +126,7 @@ class CoreSpliceTest extends TestCase
         $this->splice('odp', $this->odp->id, [[$this->core($this->distribution, 3), $this->core($drop, 1)]])->assertSessionHasNoErrors();
 
         // Traced from the middle, the chain still comes out whole and in order.
-        $trace = $this->getJson('/cable-cores/'.$this->core($this->distribution, 3)->id.'/trace')->assertOk()->json();
+        $trace = $this->getJson('/cable-cores/'.$this->core($this->distribution, 3)->id.'/trace')->assertOk()->json('traces.0');
 
         $chain = array_map(fn ($s) => $s['cable']['code'].'#'.$s['number'], $trace['segments']);
         $this->assertTrue(in_array($chain, [['FDR-01#5', 'DST-01#3', 'DRP-01#1'], ['DRP-01#1', 'DST-01#3', 'FDR-01#5']], true));
@@ -170,7 +173,7 @@ class CoreSpliceTest extends TestCase
             ->has('rows.0.trace.segments', 3)
             ->where('cables', fn ($cables) => collect($cables)->pluck('spliced_here', 'code')->all() === ['DST-01' => 1, 'FDR-01' => 1]));
 
-        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 5)->id.'/trace')->json();
+        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 5)->id.'/trace')->json('traces.0');
         $ends = [$trace['start']['code'] ?? null, $trace['end']['code'] ?? null];
         // The drop's far end is free, so one side ends at the ODC and the other has no asset.
         $this->assertContains($this->odc->code, $ends);
@@ -197,7 +200,7 @@ class CoreSpliceTest extends TestCase
     public function test_core_can_end_on_an_odp_input_or_output_port()
     {
         $port = $this->odp->ports()->where('number', 3)->sole();
-        $customer = \App\Models\Customer::create(['area_id' => $this->area->id, 'name' => 'Budi']);
+        $customer = Customer::create(['area_id' => $this->area->id, 'name' => 'Budi']);
         $port->update(['status' => 'terpakai', 'customer_id' => $customer->id]);
 
         // Feeder core 1 → JB-01 → distribution core 1 → ODP input 1; distribution core 2 straight to port 3.
@@ -210,12 +213,12 @@ class CoreSpliceTest extends TestCase
         $this->assertSame('terpakai', $d2->fresh()->status->value);
 
         // Traced from the feeder, the path ends on the ODP's splitter input.
-        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 1)->id.'/trace')->json();
+        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 1)->id.'/trace')->json('traces.0');
         $termination = $trace['start_termination'] ?? $trace['end_termination'];
         $this->assertSame(['input', 1, $this->odp->code], [$termination['kind'], $termination['port'], $termination['location']['code']]);
 
         // The direct core reaches the customer on port 3.
-        $trace = $this->getJson("/cable-cores/{$d2->id}/trace")->json();
+        $trace = $this->getJson("/cable-cores/{$d2->id}/trace")->json('traces.0');
         $termination = $trace['start_termination'] ?? $trace['end_termination'];
         $this->assertSame('Budi', $termination['customer']['name']);
 
@@ -248,7 +251,7 @@ class CoreSpliceTest extends TestCase
         $this->terminate('odp', $odp, $d2, 'output', 8)->assertSessionHasNoErrors();
         $this->assertFalse($this->odp->fresh()->forceFill(['capacity' => 4])->syncPorts());
 
-        $termination = \App\Models\CoreTermination::where('port', 8)->sole();
+        $termination = CoreTermination::where('port', 8)->sole();
         $this->delete("/terminations/{$termination->id}")->assertSessionHasNoErrors();
         $this->assertTrue($this->odp->fresh()->forceFill(['capacity' => 4])->syncPorts());
     }
@@ -260,7 +263,7 @@ class CoreSpliceTest extends TestCase
         $this->terminate('odc', $this->odc->id, $this->core($this->feeder, 1), 'input', 1)->assertSessionHasNoErrors();
         $this->terminate('odc', $this->odc->id, $this->core($this->feeder, 2), 'output', 2)->assertSessionHasNoErrors();
 
-        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 2)->id.'/trace')->json();
+        $trace = $this->getJson('/cable-cores/'.$this->core($this->feeder, 2)->id.'/trace')->json('traces.0');
         $termination = $trace['start_termination'];
         $this->assertSame(['odc', 'output', 2, $this->odp->code], [
             $termination['location']['kind'], $termination['kind'], $termination['port'], $termination['odp']['code'],
@@ -277,7 +280,90 @@ class CoreSpliceTest extends TestCase
             'code' => $this->odc->code, 'status' => 'aktif', 'capacity' => 1, 'lat' => -6.2, 'lng' => 106.8,
         ])->assertSessionHasErrors('capacity');
         $this->delete("/odcs/{$this->odc->id}");
-        $this->assertSame(0, \App\Models\CoreTermination::count());
+        $this->assertSame(0, CoreTermination::count());
+    }
+
+    public function test_a_core_of_a_cable_passing_a_joint_can_be_cut_and_used_both_ways()
+    {
+        // ODC ── MAIN (12 core) ──> ODP, passing JB-02 halfway; a branch runs from JB-02 to ODP-2.
+        $odp2 = Odp::factory()->for($this->area)->create(['lat' => -6.201, 'lng' => 106.8015]);
+        $jb = SpliceBox::factory()->for($this->area)->create(['code' => 'JB-02', 'lat' => -6.2002, 'lng' => 106.801]);
+        $main = Cable::create([
+            'code' => 'MAIN', 'type' => 'feeder', 'cores' => 12,
+            'from_type' => 'odc', 'from_id' => $this->odc->id, 'to_type' => 'odp', 'to_id' => $this->odp->id,
+            'path' => [[-6.2, 106.8], [-6.2, 106.802]],
+        ]);
+        $main->connect($jb); // not an end: becomes a pass-through point on the nearest spot
+        $this->assertTrue($main->fresh()->connects($jb));
+        $branch = Cable::create([
+            'code' => 'BRANCH', 'type' => 'distribusi', 'cores' => 4,
+            'from_type' => 'joint', 'from_id' => $jb->id, 'to_type' => 'odp', 'to_id' => $odp2->id,
+            'path' => [[-6.2002, 106.801], [-6.201, 106.8015]],
+        ]);
+        $m1 = $this->core($main, 1);
+        $post = fn (array $pairs, ?string $sideA) => $this->post('/splices', [
+            'location_type' => 'joint', 'location_id' => $jb->id, 'side_a' => $sideA,
+            'pairs' => array_map(fn ($p) => ['a' => $p[0]->id, 'b' => $p[1]->id], $pairs),
+        ]);
+
+        // MAIN passes through, so the way its core is taken must be chosen.
+        $post([[$m1, $this->core($branch, 1)]], null)->assertSessionHasErrors('pairs');
+        $data = $this->getJson("/splices?location_type=joint&location_id={$jb->id}")->json();
+        $sides = collect($data['cables'])->firstWhere('code', 'MAIN')['sides'];
+        $this->assertSame([['side' => 'from', 'toward' => $this->odc->code], ['side' => 'to', 'toward' => $this->odp->code]], $sides);
+        $this->assertSame([['side' => 'to', 'toward' => $odp2->code]], collect($data['cables'])->firstWhere('code', 'BRANCH')['sides']);
+
+        // Core 1 is cut: the ODC side feeds branch core 1, the ODP side branch core 2.
+        $post([[$m1, $this->core($branch, 1)]], 'from')->assertSessionHasNoErrors();
+        $post([[$m1, $this->core($branch, 2)]], 'to')->assertSessionHasNoErrors();
+        $post([[$m1, $this->core($branch, 3)]], 'from')->assertSessionHasErrors('pairs'); // that way is taken
+
+        $data = $this->getJson("/splices?location_type=joint&location_id={$jb->id}")->json();
+        $this->assertSame(['from', 'to'], collect($data['cables'])->firstWhere('code', 'MAIN')['cores_list'][0]['used_sides']);
+
+        // Two separate fibers on core 1: ODC → MAIN#1 → JB-02 → BRANCH#1 → ODP-2, and ODP-2 → BRANCH#2 → JB-02 → MAIN#1 → ODP.
+        $traces = $this->getJson("/cable-cores/{$m1->id}/trace")->json('traces');
+        $this->assertCount(2, $traces);
+        $chain = fn (array $t) => array_map(fn ($s) => "{$s['cable']['code']}#{$s['number']}", $t['segments']);
+        $this->assertSame(['MAIN#1', 'BRANCH#1'], $chain($traces[0]));
+        $this->assertSame([$this->odc->code, $odp2->code], [$traces[0]['start']['code'], $traces[0]['end']['code']]);
+        $this->assertSame(['JB-02'], [$traces[0]['segments'][0]['span']['to']['code']]);
+        $this->assertSame(['BRANCH#2', 'MAIN#1'], $chain($traces[1]));
+        $this->assertSame([$odp2->code, $this->odp->code], [$traces[1]['start']['code'], $traces[1]['end']['code']]);
+
+        // An untouched core runs straight through the joint.
+        $express = $this->getJson('/cable-cores/'.$this->core($main, 2)->id.'/trace')->json('traces');
+        $this->assertCount(1, $express);
+        $this->assertSame([$this->odc->code, $this->odp->code], [$express[0]['start']['code'], $express[0]['end']['code']]);
+
+        // The cable's sheet gets a row per piece, the joint's a row per splice.
+        $this->get("/splice-sheet/cable/{$main->id}")->assertOk()->assertInertia(fn ($page) => $page->has('rows', 13));
+        $this->get("/splice-sheet/joint/{$jb->id}")->assertOk()->assertInertia(fn ($page) => $page
+            ->has('rows', 2)
+            ->has('rows.0.trace.segments', 2)
+            ->has('rows.1.trace.segments', 2));
+    }
+
+    public function test_cut_core_on_one_side_only_ends_at_the_joint()
+    {
+        $jb = SpliceBox::factory()->for($this->area)->create(['code' => 'JB-03', 'lat' => -6.2, 'lng' => 106.8012]);
+        $this->distribution->connect($jb);
+        $drop = Cable::create([
+            'code' => 'DRP', 'type' => 'drop', 'cores' => 1, 'from_type' => 'joint', 'from_id' => $jb->id,
+            'path' => [[-6.2, 106.8012], [-6.2004, 106.8012]],
+        ]);
+        $d5 = $this->core($this->distribution, 5);
+        $this->post('/splices', [
+            'location_type' => 'joint', 'location_id' => $jb->id, 'side_a' => 'to',
+            'pairs' => [['a' => $d5->id, 'b' => $this->core($drop, 1)->id]],
+        ])->assertSessionHasNoErrors();
+
+        // The JB-01 side of core 5 is left dark at JB-03.
+        $traces = $this->getJson("/cable-cores/{$d5->id}/trace")->json('traces');
+        $this->assertCount(2, $traces);
+        $this->assertSame(['JB-01', 'JB-03'], [$traces[0]['start']['code'], $traces[0]['end']['code']]);
+        $this->assertCount(1, $traces[0]['segments']);
+        $this->assertSame([null, $this->odp->code], [$traces[1]['start'], $traces[1]['end']['code']]);
     }
 
     public function test_cable_detail_shows_how_often_each_core_is_spliced()

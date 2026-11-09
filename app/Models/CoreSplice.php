@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
  */
 class CoreSplice extends Model
 {
-    protected $fillable = ['location_type', 'location_id', 'core_a_id', 'core_b_id', 'notes'];
+    protected $fillable = ['location_type', 'location_id', 'core_a_id', 'core_a_side', 'core_b_id', 'core_b_side', 'notes'];
 
     public function location(): MorphTo
     {

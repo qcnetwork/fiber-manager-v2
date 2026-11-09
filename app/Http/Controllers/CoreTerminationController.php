@@ -44,6 +44,7 @@ class CoreTerminationController extends Controller
                     ->where('location_id', $location->id)
                     ->where('kind', $request->input('kind')),
             ],
+            'side' => ['nullable', Rule::in(CableCore::SIDES)],
             'notes' => ['nullable', 'string', 'max:255'],
         ], [
             'port.unique' => $request->input('kind') === 'input' ? 'Input ini sudah dipakai core lain.' : 'Port ini sudah dipakai core lain.',
@@ -51,17 +52,20 @@ class CoreTerminationController extends Controller
 
         $label = strtoupper($where['location_type']);
         $core = CableCore::find($data['core_id']);
-        if (! $core || ! Cable::connectedTo($location)->whereKey($core->cable_id)->exists()) {
+        $cable = $core ? Cable::connectedTo($location)->with(['stops.asset', 'from', 'to'])->find($core->cable_id) : null;
+        if (! $cable) {
             throw ValidationException::withMessages(['core_id' => "Core harus milik kabel yang tersambung ke {$label} ini."]);
         }
-        $usedHere = CoreSplice::involving($core->id)->where('location_type', $where['location_type'])->where('location_id', $location->id)->exists()
-            || CoreTermination::at($location)->where('core_id', $core->id)->exists();
-        if ($usedHere) {
-            throw ValidationException::withMessages(['core_id' => "Core {$core->number} sudah tersambung di {$label} ini."]);
+        // Which way along the cable the core is taken; only asked where the cable passes through.
+        $side = CoreSpliceController::resolveSide($cable, $location, $data['side'] ?? null, 'side');
+        $used = CoreSpliceController::usedSides(
+            CoreSplice::involving($core->id)->where('location_type', $where['location_type'])->where('location_id', $location->id)->get(),
+            CoreTermination::at($location)->where('core_id', $core->id)->get(),
+        );
+        if (isset($used[$core->id][$side])) {
+            throw ValidationException::withMessages(['core_id' => "Core {$core->number} sudah tersambung di {$label} ini pada arah tersebut."]);
         }
-        if (CableCore::connectionCounts([$core->id])[$core->id] >= CableCore::MAX_CONNECTIONS) {
-            throw ValidationException::withMessages(['core_id' => "Core {$core->number} sudah tersambung di kedua ujungnya."]);
-        }
+        $data['side'] = $side;
 
         DB::transaction(function () use ($data, $where, $location, $core) {
             CoreTermination::create([...$data, ...$where]);

@@ -280,19 +280,20 @@ export interface Cable extends CableLine {
 }
 
 export type CoreStatus = 'kosong' | 'terpakai' | 'rusak';
+/** Which way along its cable a core is taken from a location: towards the cable's start or its end. */
+export type CoreSide = 'from' | 'to';
 
 export interface CableCore {
     id: number;
     number: number;
     status: CoreStatus;
     notes: string | null;
-    /** How many splices the core takes part in (0–2). */
+    /** How many connections (splices and terminations) the core has. */
     splices?: number;
 }
 
 /** Cables at a splice location with their cores, and the splices made there. */
 export interface SpliceData {
-    max_splices: number;
     /** Only at an ODP/ODC: its splitter and output ports, for ending cores on an input or output port. */
     terminal: {
         kind: 'odp' | 'odc';
@@ -307,7 +308,7 @@ export interface SpliceData {
         kind: TerminationKind;
         port: number;
         notes: string | null;
-        core: { core_id: number; cable_id: number; number: number };
+        core: { core_id: number; cable_id: number; number: number; side: CoreSide };
     }[];
     cables: {
         id: number;
@@ -315,13 +316,16 @@ export interface SpliceData {
         type: CableType;
         cores: number;
         tube_size: number;
-        cores_list: (CableCore & { splices: number; spliced_here: boolean })[];
+        /** One way at a cable end, two where the cable passes through; `toward` is the next point that way. */
+        sides: { side: CoreSide; toward: string | null }[];
+        /** `used_sides`: the ways the core is already taken here. */
+        cores_list: (CableCore & { splices: number; used_sides: CoreSide[] })[];
     }[];
     splices: {
         id: number;
         notes: string | null;
-        a: { core_id: number; cable_id: number; number: number };
-        b: { core_id: number; cable_id: number; number: number };
+        a: { core_id: number; cable_id: number; number: number; side: CoreSide };
+        b: { core_id: number; cable_id: number; number: number; side: CoreSide };
     }[];
 }
 
@@ -339,15 +343,19 @@ export interface CoreTrace {
         status: CoreStatus;
         notes: string | null;
         cable: { id: number; code: string | null; type: CableType; cores: number; tube_size: number; from: TraceEnd | null; to: TraceEnd | null };
+        /** Where this piece of the core begins and ends, in path order (null: an unattached cable end). */
+        span: { from: TraceEnd | null; to: TraceEnd | null };
+        piece: string;
     }[];
     joins: { splice_id: number; kind: CableEndKind; id: number; code: string | null; notes: string | null }[];
-    /** Where the path begins and ends: the outer cable ends (null when that cable end isn't attached to an asset). */
+    /** Where the path begins and ends: a cable end, or where the core is cut and left unconnected (null: an unattached cable end). */
     start: TraceEnd | null;
     end: TraceEnd | null;
     /** Where the path really ends inside an ODP/ODC, when the outer core is terminated there. */
     start_termination: TraceTermination | null;
     end_termination: TraceTermination | null;
     core_ids: number[];
+    pieces: string[];
 }
 
 export type TerminationKind = 'input' | 'output';

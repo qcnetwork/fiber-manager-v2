@@ -36,16 +36,13 @@ class CoreSpliceController extends Controller
     {
         $location = $this->location($request);
 
-        $cables = Cable::connectedTo($location)->with('coreRows')->orderBy('code')->get();
+        $cables = Cable::connectedTo($location)->with(['coreRows', 'stops.asset', 'from', 'to'])->orderBy('code')->get();
         $counts = CableCore::connectionCounts($cables->flatMap(fn (Cable $c) => $c->coreRows->modelKeys()));
         $splices = $this->splicesAt($location)->with(['coreA', 'coreB'])->orderBy('id')->get();
         // At an ODP or ODC, cores can also end on a splitter input or an output port.
         $terminal = $location instanceof Odp || $location instanceof Odc;
         $terminations = $terminal ? CoreTermination::at($location)->with('core')->orderBy('kind')->orderBy('port')->get() : collect();
-        // "Spliced here" means taken at this location, by a splice or a termination.
-        $splicedHere = $splices->flatMap(fn (CoreSplice $s) => [$s->core_a_id, $s->core_b_id])
-            ->merge($terminations->pluck('core_id'))
-            ->flip();
+        $used = $this->usedSides($splices, $terminations);
 
         return response()->json([
             'terminal' => $terminal ? [
@@ -60,28 +57,31 @@ class CoreSpliceController extends Controller
                 'kind' => $t->kind,
                 'port' => $t->port,
                 'notes' => $t->notes,
-                'core' => ['core_id' => $t->core->id, 'cable_id' => $t->core->cable_id, 'number' => $t->core->number],
+                'core' => ['core_id' => $t->core->id, 'cable_id' => $t->core->cable_id, 'number' => $t->core->number, 'side' => $t->side],
             ])->values(),
-            'max_splices' => CableCore::MAX_CONNECTIONS,
             'cables' => $cables->map(fn (Cable $cable) => [
                 ...$cable->only('id', 'code', 'type', 'cores', 'tube_size'),
+                // One way at a cable end, two where the cable passes through.
+                'sides' => $cable->sidesAt($location),
                 'cores_list' => $cable->coreRows->map(fn (CableCore $core) => [
                     ...$core->only('id', 'number', 'status', 'notes'),
                     'splices' => $counts[$core->id] ?? 0,
-                    'spliced_here' => $splicedHere->has($core->id),
+                    'used_sides' => array_keys($used[$core->id] ?? []),
                 ])->values(),
             ])->values(),
             'splices' => $splices->map(fn (CoreSplice $s) => [
                 'id' => $s->id,
                 'notes' => $s->notes,
-                'a' => ['core_id' => $s->coreA->id, 'cable_id' => $s->coreA->cable_id, 'number' => $s->coreA->number],
-                'b' => ['core_id' => $s->coreB->id, 'cable_id' => $s->coreB->cable_id, 'number' => $s->coreB->number],
+                'a' => ['core_id' => $s->coreA->id, 'cable_id' => $s->coreA->cable_id, 'number' => $s->coreA->number, 'side' => $s->core_a_side],
+                'b' => ['core_id' => $s->coreB->id, 'cable_id' => $s->coreB->cable_id, 'number' => $s->coreB->number, 'side' => $s->core_b_side],
             ])->values(),
         ]);
     }
 
     /**
      * Splices one or more core pairs at a location; a run of consecutive cores is sent as several pairs.
+     * `side_a`/`side_b` say which way along their cable the A and B cores are taken; needed only where a cable
+     * passes through (at a cable end there is just one way).
      */
     public function store(Request $request): RedirectResponse
     {
@@ -92,43 +92,50 @@ class CoreSpliceController extends Controller
             'pairs' => ['required', 'array', 'min:1', 'max:288'],
             'pairs.*.a' => ['required', 'integer'],
             'pairs.*.b' => ['required', 'integer'],
+            'side_a' => ['nullable', Rule::in(CableCore::SIDES)],
+            'side_b' => ['nullable', Rule::in(CableCore::SIDES)],
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
 
         // Only cables that actually reach this location can be spliced here.
-        $cableIds = Cable::connectedTo($location)->pluck('id')->flip();
-        $coreIds = collect($data['pairs'])->flatMap(fn (array $p) => [(int) $p['a'], (int) $p['b']]);
-
-        if ($coreIds->duplicates()->isNotEmpty()) {
-            throw ValidationException::withMessages(['pairs' => 'Satu core hanya bisa dipakai sekali dalam satu penyambungan.']);
-        }
-
+        $cables = Cable::connectedTo($location)->with(['stops.asset', 'from', 'to'])->get()->keyBy('id');
+        $coreIds = collect($data['pairs'])->flatMap(fn (array $p) => [(int) $p['a'], (int) $p['b']])->unique();
         $cores = CableCore::whereKey($coreIds)->get()->keyBy('id');
-        $counts = CableCore::connectionCounts($coreIds);
-        $here = $this->splicesAt($location)->get()->flatMap(fn (CoreSplice $s) => [$s->core_a_id, $s->core_b_id])
-            ->merge($location instanceof Odp || $location instanceof Odc ? CoreTermination::at($location)->pluck('core_id') : [])
-            ->flip();
+        $used = $this->usedSides(
+            $this->splicesAt($location)->get(),
+            $location instanceof Odp || $location instanceof Odc ? CoreTermination::at($location)->get() : collect(),
+        );
 
-        foreach ($coreIds as $id) {
-            $core = $cores[$id] ?? null;
-            if (! $core || ! $cableIds->has($core->cable_id)) {
-                throw ValidationException::withMessages(['pairs' => 'Core harus milik kabel yang tersambung ke titik ini.']);
+        $rows = [];
+        $taken = [];
+        foreach ($data['pairs'] as $pair) {
+            $row = [];
+            foreach (['a', 'b'] as $end) {
+                $core = $cores[(int) $pair[$end]] ?? null;
+                if (! $core || ! $cables->has($core->cable_id)) {
+                    throw ValidationException::withMessages(['pairs' => 'Core harus milik kabel yang tersambung ke titik ini.']);
+                }
+                $side = $this->resolveSide($cables[$core->cable_id], $location, $data["side_{$end}"] ?? null, 'pairs');
+                $key = "{$core->id}:{$side}";
+                if (isset($used[$core->id][$side]) || isset($taken[$key])) {
+                    throw ValidationException::withMessages(['pairs' => "Core {$core->number} sudah disambung di titik ini pada arah tersebut."]);
+                }
+                $taken[$key] = true;
+                $row["core_{$end}_id"] = $core->id;
+                $row["core_{$end}_side"] = $side;
             }
-            if ($here->has($id)) {
-                throw ValidationException::withMessages(['pairs' => "Core {$core->number} sudah disambung di titik ini."]);
+            if ($row['core_a_id'] === $row['core_b_id']) {
+                throw ValidationException::withMessages(['pairs' => 'Core tidak bisa disambung ke dirinya sendiri.']);
             }
-            if ($counts[$id] >= CableCore::MAX_CONNECTIONS) {
-                throw ValidationException::withMessages(['pairs' => "Core {$core->number} sudah tersambung di kedua ujungnya."]);
-            }
+            $rows[] = $row;
         }
 
-        DB::transaction(function () use ($data, $location, $cores) {
-            foreach ($data['pairs'] as $pair) {
+        DB::transaction(function () use ($data, $rows, $location, $cores) {
+            foreach ($rows as $row) {
                 CoreSplice::create([
+                    ...$row,
                     'location_type' => $location->getMorphClass(),
                     'location_id' => $location->getKey(),
-                    'core_a_id' => $pair['a'],
-                    'core_b_id' => $pair['b'],
                     'notes' => $data['notes'] ?? null,
                 ]);
             }
@@ -167,7 +174,51 @@ class CoreSpliceController extends Controller
     {
         $core->cable()->firstOrFail(); // area scope guards access
 
-        return response()->json($core->trace());
+        // One path per piece: a core cut where its cable passes a joint carries a separate fiber each way.
+        return response()->json(['traces' => $core->traces()]);
+    }
+
+    /**
+     * The ways each core is already taken at the location: [core id => [side => true]].
+     *
+     * @param  Collection<int, CoreSplice>  $splices
+     * @param  Collection<int, CoreTermination>  $terminations
+     * @return array<int, array<string, true>>
+     */
+    public static function usedSides(Collection $splices, Collection $terminations): array
+    {
+        $used = [];
+        foreach ($splices as $s) {
+            $used[(int) $s->core_a_id][$s->core_a_side] = true;
+            $used[(int) $s->core_b_id][$s->core_b_side] = true;
+        }
+        foreach ($terminations as $t) {
+            $used[(int) $t->core_id][$t->side] = true;
+        }
+
+        return $used;
+    }
+
+    /**
+     * The way a core of the cable is taken at the location: the one given, or the only one there is.
+     */
+    public static function resolveSide(Cable $cable, Model $location, ?string $side, string $errorKey): string
+    {
+        $sides = array_column($cable->sidesAt($location), 'side');
+        $name = $cable->code ?? "Kabel #{$cable->id}";
+
+        if ($side === null) {
+            if (count($sides) !== 1) {
+                throw ValidationException::withMessages([$errorKey => "Pilih arah core untuk {$name}: kabel ini lewat di titik ini."]);
+            }
+
+            return $sides[0];
+        }
+        if (! in_array($side, $sides, true)) {
+            throw ValidationException::withMessages([$errorKey => "Arah tersebut tidak ada untuk {$name} di titik ini."]);
+        }
+
+        return $side;
     }
 
     /**

@@ -156,6 +156,47 @@ class Cable extends Model
     }
 
     /**
+     * Where the asset sits along the cable, as a vertex: 0 at the start, the pass-through point's vertex,
+     * the last vertex at the end; null when the cable doesn't reach it.
+     */
+    public function positionOf(string $type, int $id): ?int
+    {
+        if ($this->from_type === $type && (int) $this->from_id === $id) {
+            return 0;
+        }
+        $stop = $this->stops->first(fn (CableStop $s) => $s->asset_type === $type && (int) $s->asset_id === $id);
+        if ($stop) {
+            return (int) $stop->vertex;
+        }
+
+        return $this->to_type === $type && (int) $this->to_id === $id ? count($this->path) - 1 : null;
+    }
+
+    /**
+     * The ways a core can be taken from the asset: towards the cable's start ("from") and/or its end ("to"),
+     * each with the next point that way. At a cable end there is one way; where the cable passes through, two.
+     *
+     * @return list<array{side: string, toward: string|null}>
+     */
+    public function sidesAt(Model $asset): array
+    {
+        $pos = $this->positionOf($asset->getMorphClass(), $asset->getKey());
+        if ($pos === null) {
+            return [];
+        }
+        $route = collect($this->route());
+        $sides = [];
+        if ($pos > 0) {
+            $sides[] = ['side' => 'from', 'toward' => $route->last(fn (array $p) => $p['vertex'] < $pos)['asset']['code'] ?? null];
+        }
+        if ($pos < count($this->path) - 1) {
+            $sides[] = ['side' => 'to', 'toward' => $route->first(fn (array $p) => $p['vertex'] > $pos)['asset']['code'] ?? null];
+        }
+
+        return $sides;
+    }
+
+    /**
      * Cables in the area passing within the radius of a point, nearest first, with their distance in meters.
      *
      * @return Collection<int, array{cable: Cable, distance: float}>
