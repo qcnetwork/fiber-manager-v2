@@ -7,6 +7,7 @@ use App\Enums\CableType;
 use App\Models\Concerns\BelongsToArea;
 use App\Models\Concerns\LogsActivity;
 use App\Services\GeoService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -17,7 +18,7 @@ class Cable extends Model
     use BelongsToArea, LogsActivity;
 
     protected $fillable = [
-        'area_id', 'code', 'type', 'cores', 'status', 'from_type', 'from_id', 'to_type', 'to_id', 'path', 'notes',
+        'area_id', 'code', 'type', 'cores', 'tube_size', 'status', 'from_type', 'from_id', 'to_type', 'to_id', 'path', 'notes',
     ];
 
     protected $attributes = [
@@ -47,7 +48,11 @@ class Cable extends Model
             $cable->max_lat = max(array_column($path, 0));
             $cable->min_lng = min(array_column($path, 1));
             $cable->max_lng = max(array_column($path, 1));
+            // A tube can't hold more cores than the cable has.
+            $cable->tube_size = max(1, min((int) ($cable->tube_size ?: 12), (int) $cable->cores));
         });
+
+        static::created(fn (Cable $cable) => $cable->syncCores());
     }
 
     protected function activityIgnored(): array
@@ -81,6 +86,31 @@ class Cable extends Model
         return $this->hasMany(CableStop::class)->orderBy('vertex');
     }
 
+    public function coreRows(): HasMany
+    {
+        return $this->hasMany(CableCore::class)->orderBy('number');
+    }
+
+    /**
+     * Makes one core row per core. Returns false (and changes nothing) when a core that would be removed
+     * by lowering the core count still holds information.
+     */
+    public function syncCores(): bool
+    {
+        $existing = $this->coreRows()->get()->keyBy('number');
+
+        $toRemove = $existing->filter(fn (CableCore $core) => $core->number > $this->cores);
+        if ($toRemove->contains(fn (CableCore $core) => $core->isRecorded())) {
+            return false;
+        }
+        $this->coreRows()->whereKey($toRemove->modelKeys())->delete();
+
+        $missing = collect(range(1, max(1, $this->cores)))->diff($existing->keys());
+        $this->coreRows()->createMany($missing->map(fn (int $number) => ['number' => $number])->all());
+
+        return true;
+    }
+
     /**
      * Replaces the pass-through points; vertices at either end are skipped (those are from/to).
      *
@@ -99,6 +129,20 @@ class Cable extends Model
     }
 
     /**
+     * Cables that start, end or pass through the asset.
+     */
+    public function scopeConnectedTo(Builder $query, Model $asset): void
+    {
+        $type = $asset->getMorphClass();
+        $id = $asset->getKey();
+
+        $query->where(fn (Builder $q) => $q
+            ->where(fn (Builder $q) => $q->where('from_type', $type)->where('from_id', $id))
+            ->orWhere(fn (Builder $q) => $q->where('to_type', $type)->where('to_id', $id))
+            ->orWhereHas('stops', fn (Builder $q) => $q->where('asset_type', $type)->where('asset_id', $id)));
+    }
+
+    /**
      * Whether the cable already starts, ends or passes through the asset.
      */
     public function connects(Model $asset): bool
@@ -109,6 +153,47 @@ class Cable extends Model
         return ($this->from_type === $type && (int) $this->from_id === $id)
             || ($this->to_type === $type && (int) $this->to_id === $id)
             || $this->stops()->where('asset_type', $type)->where('asset_id', $id)->exists();
+    }
+
+    /**
+     * Where the asset sits along the cable, as a vertex: 0 at the start, the pass-through point's vertex,
+     * the last vertex at the end; null when the cable doesn't reach it.
+     */
+    public function positionOf(string $type, int $id): ?int
+    {
+        if ($this->from_type === $type && (int) $this->from_id === $id) {
+            return 0;
+        }
+        $stop = $this->stops->first(fn (CableStop $s) => $s->asset_type === $type && (int) $s->asset_id === $id);
+        if ($stop) {
+            return (int) $stop->vertex;
+        }
+
+        return $this->to_type === $type && (int) $this->to_id === $id ? count($this->path) - 1 : null;
+    }
+
+    /**
+     * The ways a core can be taken from the asset: towards the cable's start ("from") and/or its end ("to"),
+     * each with the next point that way. At a cable end there is one way; where the cable passes through, two.
+     *
+     * @return list<array{side: string, toward: string|null}>
+     */
+    public function sidesAt(Model $asset): array
+    {
+        $pos = $this->positionOf($asset->getMorphClass(), $asset->getKey());
+        if ($pos === null) {
+            return [];
+        }
+        $route = collect($this->route());
+        $sides = [];
+        if ($pos > 0) {
+            $sides[] = ['side' => 'from', 'toward' => $route->last(fn (array $p) => $p['vertex'] < $pos)['asset']['code'] ?? null];
+        }
+        if ($pos < count($this->path) - 1) {
+            $sides[] = ['side' => 'to', 'toward' => $route->first(fn (array $p) => $p['vertex'] > $pos)['asset']['code'] ?? null];
+        }
+
+        return $sides;
     }
 
     /**
@@ -136,7 +221,7 @@ class Cable extends Model
      * line gets a point on the asset (a plain bend right there is reused, else a new vertex is inserted on the
      * nearest segment) and the asset becomes a pass-through point. Does nothing when already connected.
      */
-    public function connect(Area|Odc|Odp $asset): void
+    public function connect(Area|Odc|Odp|SpliceBox $asset): void
     {
         if ($asset->lat === null || $asset->lng === null || $this->connects($asset)) {
             return;
@@ -233,7 +318,7 @@ class Cable extends Model
     /**
      * Keeps cable ends and pass-through points on a POP/ODC/ODP after it is moved, and lets go of it when it is deleted.
      */
-    public static function followEndpoint(Area|Odc|Odp $asset, bool $deleted = false): void
+    public static function followEndpoint(Area|Odc|Odp|SpliceBox $asset, bool $deleted = false): void
     {
         $type = $asset->getMorphClass();
 

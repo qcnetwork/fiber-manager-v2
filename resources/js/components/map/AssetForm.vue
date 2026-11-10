@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { currentPosition, getJson } from '@/lib/http';
-import { cableTypes } from '@/lib/cables';
-import type { Area, AssetKind, CableType, Odc, OdcOption, Odp, OltPortStatus } from '@/types';
+import { cableTypes, jointTypes } from '@/lib/cables';
+import type { Area, AssetKind, CableType, Odc, OdcOption, Odp, OltPortStatus, SpliceBox, SpliceBoxType } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import { Crosshair, LoaderCircle, X } from '@lucide/vue';
 import { useDebounceFn } from '@vueuse/core';
@@ -14,7 +14,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
     kind: AssetKind;
-    asset: Odc | Odp | null;
+    asset: Odc | Odp | SpliceBox | null;
     location: { lat: number; lng: number };
     areas: Area[];
     canChooseArea: boolean;
@@ -30,8 +30,10 @@ const emit = defineEmits<{
 
 const odp = props.kind === 'odp' ? (props.asset as Odp | null) : null;
 const odc = props.kind === 'odc' ? (props.asset as Odc | null) : null;
+const joint = props.kind === 'joint' ? (props.asset as SpliceBox | null) : null;
 const isNew = !props.asset;
-const label = props.kind === 'odc' ? 'ODC' : 'ODP';
+const label = { odc: 'ODC', odp: 'ODP', joint: 'Joint/Roset' }[props.kind];
+const defaultCapacity = { odc: 48, odp: 8, joint: null }[props.kind];
 
 const form = useForm({
     area_id: props.asset?.area_id ?? props.defaultAreaId,
@@ -41,19 +43,24 @@ const form = useForm({
     lat: props.location.lat.toFixed(7),
     lng: props.location.lng.toFixed(7),
     address: props.asset?.address ?? '',
-    capacity: props.asset?.capacity ?? (props.kind === 'odc' ? 48 : 8),
-    splitter_ratio: props.asset?.splitter_ratio ?? (props.kind === 'odc' ? '' : '1:8'),
+    capacity: (props.asset?.capacity ?? defaultCapacity ?? '') as number | string,
+    splitter_ratio: props.asset?.splitter_ratio ?? (props.kind === 'odp' ? '1:8' : ''),
     installed_at: props.asset?.installed_at ?? '',
     notes: props.asset?.notes ?? '',
     // ODP only
     odc_id: odp?.odc_id ?? props.defaultOdcId ?? null,
     odc_port: odp?.odc_port ?? null,
-    pole_number: odp?.pole_number ?? '',
+    pole_number: odp?.pole_number ?? joint?.pole_number ?? '',
+    // Joint/rosette only
+    type: (joint?.type ?? 'joint_box') as SpliceBoxType,
     // ODC only: the OLT PON port feeding it
     olt_port_id: odc?.olt_port_id ?? null,
     // Nearby cables to connect the asset to on save
     connect_cables: [] as number[],
 });
+
+// For the auto-code hint on joints.
+const areaCode = computed(() => props.areas.find((a) => a.id === Number(form.area_id))?.code ?? null);
 
 // ---- Cables passing near the marker, offered for connecting the asset to
 interface NearbyCable {
@@ -159,17 +166,23 @@ const freeOdcPorts = computed(() => {
 const odpCapacities = [2, 4, 8, 16, 24, 32];
 
 function submit() {
-    const resource = props.kind === 'odc' ? 'odcs' : 'odps';
+    const resource = `${props.kind}s`;
     const options = { preserveScroll: true, preserveState: true, onSuccess: () => emit('saved') };
 
+    /* eslint-disable @typescript-eslint/no-unused-vars */
     form.transform((data) => {
+        if (props.kind === 'joint') {
+            const { odc_id, odc_port, olt_port_id, splitter_ratio, ...rest } = data;
+            return { ...rest, capacity: rest.capacity || null };
+        }
         if (props.kind === 'odc') {
-            const { odc_id, odc_port, pole_number, ...rest } = data; // eslint-disable-line @typescript-eslint/no-unused-vars
+            const { odc_id, odc_port, pole_number, type, ...rest } = data;
             return { ...rest, olt_port_id: rest.olt_port_id || null };
         }
-        const { olt_port_id, ...rest } = data; // eslint-disable-line @typescript-eslint/no-unused-vars
+        const { olt_port_id, type, ...rest } = data;
         return { ...rest, odc_id: rest.odc_id || null, odc_port: rest.odc_id ? rest.odc_port : null };
     });
+    /* eslint-enable @typescript-eslint/no-unused-vars */
 
     if (isNew) form.post(route(`${resource}.store`), options);
     else form.put(route(`${resource}.update`, { [props.kind]: props.asset!.id }), options);
@@ -195,10 +208,35 @@ function submit() {
             <InputError :message="form.errors.area_id" />
         </div>
 
+        <div v-if="kind === 'joint'" class="grid gap-1.5">
+            <Label>Jenis</Label>
+            <div class="grid grid-cols-2 gap-2">
+                <button
+                    v-for="(t, key) in jointTypes"
+                    :key="key"
+                    type="button"
+                    class="rounded-md border px-3 py-2 text-sm"
+                    :class="form.type === key ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted'"
+                    @click="form.type = key as SpliceBoxType"
+                >
+                    {{ t.label }}
+                </button>
+            </div>
+            <InputError :message="form.errors.type" />
+        </div>
+
         <div class="grid grid-cols-2 gap-3">
             <div class="grid gap-1.5">
-                <Label for="code">Kode {{ label }}</Label>
-                <Input id="code" v-model="form.code" required :placeholder="kind === 'odc' ? 'ODC-BDG-01' : 'ODP-BDG-01/01'" />
+                <Label for="code">Kode {{ kind === 'joint' ? jointTypes[form.type]?.label : label }}</Label>
+                <Input
+                    id="code"
+                    v-model="form.code"
+                    :required="kind !== 'joint'"
+                    :placeholder="{ odc: 'ODC-BDG-01', odp: 'ODP-BDG-01/01', joint: 'Kosongkan = otomatis' }[kind]"
+                />
+                <p v-if="kind === 'joint' && !form.code" class="text-xs text-muted-foreground">
+                    Dibuat otomatis, mis. {{ form.type === 'roset' ? 'RS' : 'JB' }}-{{ areaCode ?? 'AREA' }}-01
+                </p>
                 <InputError :message="form.errors.code" />
             </div>
             <div class="grid gap-1.5">
@@ -313,7 +351,20 @@ function submit() {
             </div>
         </template>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div v-if="kind === 'joint'" class="grid grid-cols-2 gap-3">
+            <div class="grid gap-1.5">
+                <Label for="pole_number">No. tiang</Label>
+                <Input id="pole_number" v-model="form.pole_number" />
+                <InputError :message="form.errors.pole_number" />
+            </div>
+            <div class="grid gap-1.5">
+                <Label for="capacity">Kapasitas sambungan (core)</Label>
+                <Input id="capacity" v-model="form.capacity" type="number" inputmode="numeric" min="1" max="1000" placeholder="opsional" />
+                <InputError :message="form.errors.capacity" />
+            </div>
+        </div>
+
+        <div v-else class="grid grid-cols-2 gap-3">
             <div class="grid gap-1.5">
                 <Label for="capacity">{{ kind === 'odc' ? 'Kapasitas port output' : 'Jumlah port' }}</Label>
                 <Input v-if="kind === 'odc'" id="capacity" v-model="form.capacity" type="number" min="1" max="1024" />

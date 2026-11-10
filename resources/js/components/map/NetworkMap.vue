@@ -4,6 +4,7 @@ import L, {
     cableStyle,
     cableTypes,
     formatLength,
+    jointIcon,
     odcIcon,
     odpIcon,
     linkedVertexIcon,
@@ -12,8 +13,8 @@ import L, {
     popIcon,
     vertexIcon,
 } from '@/lib/leaflet';
-import type { CableEndKind, CableLine, CustomerMarker, LatLng, MapItemKind, OdcMarker, OdpMarker, PopMarker } from '@/types';
-import { endLabel } from '@/lib/cables';
+import type { CableEndKind, CableLine, CustomerMarker, JointMarker, LatLng, MapItemKind, OdcMarker, OdpMarker, PopMarker } from '@/types';
+import { endLabel, jointTypes } from '@/lib/cables';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 type DraftLink = { kind: CableEndKind; id: number };
@@ -39,6 +40,8 @@ const props = defineProps<{
     customerFocus?: { lat: number; lng: number; odp_latlng: [number, number] | null } | null;
     /** POPs in view; only the network map passes them (adds the "POP" layer). */
     pops?: PopMarker[];
+    /** Joint boxes and rosettes in view; only the network map passes them (adds the "Joint/Roset" layer). */
+    joints?: JointMarker[];
 }>();
 
 const emit = defineEmits<{
@@ -61,6 +64,7 @@ const el = ref<HTMLDivElement>();
 let map: L.Map;
 let resizeObserver: ResizeObserver;
 const popLayer = L.layerGroup();
+const jointLayer = L.layerGroup();
 const odcLayer = L.layerGroup();
 // The "ODP" overlay holds either the clustered or the plain group; the "Kelompokkan ODP" toggle swaps them.
 const odpLayer = L.layerGroup();
@@ -163,6 +167,14 @@ function renderAssets() {
                 interactive: false,
             }).addTo(linkLayer);
         }
+    }
+
+    jointLayer.clearLayers();
+    for (const joint of props.joints ?? []) {
+        L.marker([joint.lat, joint.lng], { icon: jointIcon(joint.type, joint.status, isSelected('joint', joint.id)), zIndexOffset: 500 })
+            .bindTooltip(`<b>${escapeHtml(joint.code)}</b><br>${jointTypes[joint.type]?.label ?? 'Joint'}`, { direction: 'top', offset: [0, -8] })
+            .on('click', (e) => onAssetClick(e, 'joint', joint.id))
+            .addTo(jointLayer);
     }
 }
 
@@ -381,6 +393,7 @@ function assetsNear(point: L.Point): Candidate[] {
     props.pops?.forEach((pop) => consider('pop', pop, pop.name));
     props.odcs.forEach((odc) => consider('odc', odc, odc.code));
     props.odps.forEach((odp) => consider('odp', odp, odp.code));
+    props.joints?.forEach((joint) => consider('joint', joint, joint.code));
     return found.sort((a, b) => a.dist - b.dist);
 }
 
@@ -451,6 +464,10 @@ onMounted(() => {
         popLayer.addTo(map);
         overlays.POP = popLayer;
     }
+    if (props.joints) {
+        jointLayer.addTo(map);
+        overlays['Joint/Roset'] = jointLayer;
+    }
     // Only pages that pass customers offer the layer (never the sales coverage page).
     if (props.customers) overlays.Pelanggan = customerLayer;
     overlays['Kelompokkan ODP'] = clusterToggle;
@@ -491,7 +508,7 @@ onBeforeUnmount(() => {
     map?.remove();
 });
 
-watch([() => props.pops, () => props.odcs, () => props.odps, () => props.selected], renderAssets);
+watch([() => props.pops, () => props.odcs, () => props.odps, () => props.joints, () => props.selected], renderAssets);
 watch([() => props.cables, () => props.selected], renderCables);
 watch([() => props.draft, () => props.draftLinks], renderDraft, { deep: true });
 watch(() => props.pick, renderPick, { deep: true });

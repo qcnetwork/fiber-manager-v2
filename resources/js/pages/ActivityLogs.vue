@@ -73,6 +73,8 @@ const fields: Record<string, string> = {
     package: 'Paket',
     ont_sn: 'SN ONT',
     type: 'Jenis',
+    sambungan: 'Sambungan',
+    tube_size: 'Core per tube',
     cores: 'Core',
     path: 'Jalur',
     length_m: 'Panjang (m)',

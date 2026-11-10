@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\OdcRequest;
+use App\Models\CoreTermination;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Services\GeoService;
@@ -10,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class OdcController extends Controller
 {
@@ -23,6 +25,8 @@ class OdcController extends Controller
             'odps' => $odps,
             'used_odc_ports' => $odps->pluck('odc_port')->filter()->values(),
             'customer_count' => $odps->sum('used_ports'),
+            // Cores ending on this ODC's splitter inputs and output ports.
+            'core_terminations' => CoreTermination::listFor($odc),
         ]);
     }
 
@@ -37,6 +41,13 @@ class OdcController extends Controller
     {
         DB::transaction(function () use ($request, $odc) {
             $odc->update($request->assetData());
+
+            // An output port with a core terminated on it can't disappear.
+            if (CoreTermination::at($odc)->where('kind', 'output')->where('port', '>', $odc->capacity)->exists()) {
+                throw ValidationException::withMessages([
+                    'capacity' => 'Kapasitas tidak bisa dikurangi: port bernomor di atas '.$odc->capacity.' masih tersambung ke core kabel.',
+                ]);
+            }
             $request->connectCables($odc);
         });
 

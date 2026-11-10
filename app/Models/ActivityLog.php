@@ -28,6 +28,7 @@ class ActivityLog extends Model
         Odc::class => 'odc',
         Odp::class => 'odp',
         OdpPort::class => 'odp_port',
+        SpliceBox::class => 'joint',
         Customer::class => 'customer',
         Cable::class => 'cable',
         Photo::class => 'photo',

@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\Olt;
+use App\Models\SpliceBox;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
 
@@ -31,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
             'olt' => Olt::class,
             'odc' => Odc::class,
             'odp' => Odp::class,
+            'joint' => SpliceBox::class, // joint box / rosette
             'customer' => Customer::class,
         ]);
     }

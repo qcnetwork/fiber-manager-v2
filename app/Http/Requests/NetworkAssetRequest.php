@@ -6,6 +6,7 @@ use App\Enums\AssetStatus;
 use App\Models\Cable;
 use App\Models\Odc;
 use App\Models\Odp;
+use App\Models\SpliceBox;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
@@ -65,7 +66,7 @@ abstract class NetworkAssetRequest extends FormRequest
     /**
      * Connects the saved asset to the cables the user ticked.
      */
-    public function connectCables(Odc|Odp $asset): void
+    public function connectCables(Odc|Odp|SpliceBox $asset): void
     {
         $ids = $this->validated('connect_cables') ?? [];
         if ($ids) {

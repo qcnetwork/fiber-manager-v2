@@ -26,10 +26,18 @@ export function formatLength(meters: number): string {
     return meters >= 1000 ? `${(meters / 1000).toLocaleString('id-ID', { maximumFractionDigits: 2 })} km` : `${Math.round(meters)} m`;
 }
 
+/** Joint boxes and rosettes. */
+export const jointTypes: Record<string, { label: string; short: string }> = {
+    joint_box: { label: 'Joint box', short: 'JB' },
+    roset: { label: 'Roset', short: 'RS' },
+};
+
 /**
  * "ODC ODC-01" style label for a cable end; POP names often already start with "POP".
+ * Joint boxes and rosettes are shown by their code alone (their codes usually say JB/RS already).
  */
 export function endLabel(kind: string, code: string): string {
+    if (kind === 'joint') return code;
     const prefix = kind.toUpperCase();
     return code.toUpperCase().startsWith(prefix) ? code : `${prefix} ${code}`;
 }

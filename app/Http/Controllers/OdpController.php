@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\OdpRequest;
+use App\Models\CoreTermination;
 use App\Models\Odp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -16,7 +17,8 @@ class OdpController extends Controller
     {
         $odp->load(['area:id,code,name', 'odc:id,code,name', 'ports.customer', 'photos.user:id,name']);
 
-        return response()->json(['odp' => $odp]);
+        // Cores ending on this ODP's splitter inputs and output ports.
+        return response()->json(['odp' => [...$odp->toArray(), 'core_terminations' => CoreTermination::listFor($odp)]]);
     }
 
     public function store(OdpRequest $request): RedirectResponse

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cableTypes, endLabel, formatLength, pathLength } from '@/lib/cables';
+import { tubeSizes } from '@/lib/cores';
 import type { Area, Cable, CableEndpoint, CableStopDraft, CableType, LatLng } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import { LoaderCircle, Undo2, X } from '@lucide/vue';
@@ -36,6 +37,7 @@ const form = useForm({
     code: props.cable?.code ?? '',
     type: (props.cable?.type ?? 'distribusi') as CableType,
     cores: props.cable?.cores ?? 12,
+    tube_size: props.cable?.tube_size ?? 12,
     status: props.cable?.status ?? 'aktif',
     notes: props.cable?.notes ?? '',
 });
@@ -45,6 +47,16 @@ watch(
     () => form.type,
     (type) => {
         if (isNew) form.cores = defaultCores[type];
+    },
+);
+
+// A tube can't hold more cores than the cable has; growing a small cable goes back to the usual 12 per tube.
+watch(
+    () => form.cores,
+    (cores, previous) => {
+        if (form.tube_size > cores || (previous !== undefined && form.tube_size === previous && cores > previous)) {
+            form.tube_size = Math.min(cores, 12);
+        }
     },
 );
 
@@ -143,6 +155,17 @@ const endError = computed(
                 </NativeSelect>
                 <InputError :message="form.errors.cores" />
             </div>
+        </div>
+
+        <div v-if="form.cores > 1" class="grid gap-1.5">
+            <Label for="cable_tube_size">Isi core per tube</Label>
+            <NativeSelect id="cable_tube_size" v-model.number="form.tube_size">
+                <option v-for="t in tubeSizes.filter((t) => t <= form.cores)" :key="t" :value="t">
+                    {{ t }} core/tube ({{ Math.ceil(form.cores / t) }} tube)
+                </option>
+            </NativeSelect>
+            <p class="text-xs text-muted-foreground">Menentukan warna tube dan warna core di daftar core.</p>
+            <InputError :message="form.errors.tube_size" />
         </div>
 
         <div class="grid grid-cols-2 gap-3">

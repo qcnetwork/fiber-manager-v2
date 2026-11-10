@@ -166,3 +166,15 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* A fiber core's color (see lib/cores.ts); striped for cores 13-24 of a 24-core tube. */
+.core-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    background: var(--c);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+.core-dot.is-striped {
+    background: repeating-linear-gradient(45deg, var(--c) 0 3px, #111827 3px 4px);
+}

@@ -132,6 +132,35 @@ export interface Odp extends AssetFields {
     pole_number: string | null;
     odc?: { id: number; code: string; name: string | null } | null;
     ports?: OdpPort[];
+    /** Cores ending on the splitter inputs / output ports (detail only). */
+    core_terminations?: PanelTermination[];
+}
+
+export type SpliceBoxType = 'joint_box' | 'roset';
+
+/** A joint box or rosette on the map. */
+export interface JointMarker {
+    id: number;
+    type: SpliceBoxType;
+    code: string;
+    name: string | null;
+    lat: number;
+    lng: number;
+    status: AssetStatus;
+}
+
+/** A joint box or rosette: where cables are spliced together. */
+export interface SpliceBox extends Omit<AssetFields, 'capacity' | 'splitter_ratio'> {
+    type: SpliceBoxType;
+    pole_number: string | null;
+    /** How many splices the trays hold; optional. */
+    capacity: number | null;
+    splitter_ratio?: null;
+}
+
+export interface JointDetail {
+    joint: SpliceBox;
+    cables: { id: number; code: string | null; type: CableType; cores: number; status: AssetStatus; length_m: number }[];
 }
 
 export interface OdcDetail {
@@ -139,6 +168,8 @@ export interface OdcDetail {
     odps: { id: number; code: string; odc_port: number | null; capacity: number; status: AssetStatus; used_ports: number }[];
     used_odc_ports: number[];
     customer_count: number;
+    /** Cores ending on the ODC's splitter inputs / output ports. */
+    core_terminations?: PanelTermination[];
 }
 
 export interface Customer {
@@ -204,7 +235,7 @@ export interface NearestOdp {
     address: string | null;
 }
 
-export type AssetKind = 'odc' | 'odp';
+export type AssetKind = 'odc' | 'odp' | 'joint';
 /** What a cable end can attach to. */
 export type CableEndKind = 'pop' | AssetKind;
 export type MapItemKind = CableEndKind | 'cable' | 'customer';
@@ -241,8 +272,114 @@ export interface Cable extends CableLine {
     area?: Pick<Area, 'id' | 'code' | 'name'>;
     from?: CableEnd | null;
     to?: CableEnd | null;
+    tube_size: number;
     /** Start, pass-through points and end, in order along the cable (only from the detail endpoint). */
     route?: CableRoutePoint[];
+    /** One row per core (only from the detail endpoint). */
+    core_list?: CableCore[];
+}
+
+export type CoreStatus = 'kosong' | 'terpakai' | 'rusak';
+/** Which way along its cable a core is taken from a location: towards the cable's start or its end. */
+export type CoreSide = 'from' | 'to';
+
+export interface CableCore {
+    id: number;
+    number: number;
+    status: CoreStatus;
+    notes: string | null;
+    /** How many connections (splices and terminations) the core has. */
+    splices?: number;
+}
+
+/** Cables at a splice location with their cores, and the splices made there. */
+export interface SpliceData {
+    /** Only at an ODP/ODC: its splitter and output ports, for ending cores on an input or output port. */
+    terminal: {
+        kind: 'odp' | 'odc';
+        capacity: number;
+        splitter_ratio: string | null;
+        max_inputs: number;
+        /** `feeds`: the customer on an ODP port, the ODP on an ODC port. */
+        ports: { number: number; status: string; feeds: string | null }[];
+    } | null;
+    terminations: {
+        id: number;
+        kind: TerminationKind;
+        port: number;
+        notes: string | null;
+        core: { core_id: number; cable_id: number; number: number; side: CoreSide };
+    }[];
+    cables: {
+        id: number;
+        code: string | null;
+        type: CableType;
+        cores: number;
+        tube_size: number;
+        /** One way at a cable end, two where the cable passes through; `toward` is the next point that way. */
+        sides: { side: CoreSide; toward: string | null }[];
+        /** `used_sides`: the ways the core is already taken here. */
+        cores_list: (CableCore & { splices: number; used_sides: CoreSide[] })[];
+    }[];
+    splices: {
+        id: number;
+        notes: string | null;
+        a: { core_id: number; cable_id: number; number: number; side: CoreSide };
+        b: { core_id: number; cable_id: number; number: number; side: CoreSide };
+    }[];
+}
+
+interface TraceEnd {
+    kind: CableEndKind;
+    id: number;
+    code: string;
+}
+
+/** A fiber path: cores in order, joined by splices (`joins[i]` sits between `segments[i]` and `segments[i + 1]`). */
+export interface CoreTrace {
+    segments: {
+        core_id: number;
+        number: number;
+        status: CoreStatus;
+        notes: string | null;
+        cable: { id: number; code: string | null; type: CableType; cores: number; tube_size: number; from: TraceEnd | null; to: TraceEnd | null };
+        /** Where this piece of the core begins and ends, in path order (null: an unattached cable end). */
+        span: { from: TraceEnd | null; to: TraceEnd | null };
+        piece: string;
+    }[];
+    joins: { splice_id: number; kind: CableEndKind; id: number; code: string | null; notes: string | null }[];
+    /** Where the path begins and ends: a cable end, or where the core is cut and left unconnected (null: an unattached cable end). */
+    start: TraceEnd | null;
+    end: TraceEnd | null;
+    /** Where the path really ends inside an ODP/ODC, when the outer core is terminated there. */
+    start_termination: TraceTermination | null;
+    end_termination: TraceTermination | null;
+    core_ids: number[];
+    pieces: string[];
+}
+
+export type TerminationKind = 'input' | 'output';
+
+/** A core ending at an ODP/ODC: on a splitter input or straight on an output port. */
+export interface TraceTermination {
+    termination_id: number;
+    core_id: number;
+    location: { kind: 'odp' | 'odc'; id: number; code: string; splitter_ratio: string | null } | null;
+    kind: TerminationKind;
+    port: number;
+    /** What the output port feeds: a customer (ODP) or an ODP (ODC). */
+    customer: { id: number; name: string } | null;
+    odp: { id: number; code: string } | null;
+    notes: string | null;
+}
+
+/** Cores ending on an ODP's/ODC's splitter inputs and output ports, for its panel. */
+export interface PanelTermination {
+    kind: TerminationKind;
+    port: number;
+    core_id: number;
+    number: number;
+    cable: { id: number; code: string | null; type: CableType; cores: number; tube_size: number } | null;
 }
 
 /**
