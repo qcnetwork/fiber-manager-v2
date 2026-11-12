@@ -17,6 +17,8 @@ export interface NavItem {
     href: string;
     icon?: LucideIcon;
     isActive?: boolean;
+    /** Opens an outside page in a new tab. */
+    external?: boolean;
 }
 
 export interface SharedData {

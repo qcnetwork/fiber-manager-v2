@@ -4,7 +4,7 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { ArrowDownUp, Download, History, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
+import { ArrowDownUp, Download, ClipboardPen, History, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
 import { computed } from 'vue';
 import { useInstallPrompt } from '@/composables/usePwa';
 import AppLogo from './AppLogo.vue';
@@ -16,6 +16,14 @@ const coverageItem: NavItem = {
     title: 'Cek Coverage',
     href: '/coverage',
     icon: Radar,
+};
+
+// Temporary: installation requests go through the website form until the customer list feature exists here.
+const installRequestItem: NavItem = {
+    title: 'Request Pemasangan',
+    href: 'https://qcnetwork.net/daftar-adm',
+    icon: ClipboardPen,
+    external: true,
 };
 
 const staffNavItems: NavItem[] = [
@@ -46,8 +54,9 @@ const activityItem: NavItem = {
 // Sales accounts only use the coverage check; the history is for the admins who can delete data.
 const mainNavItems = computed(() => {
     const role = page.props.auth.user.role;
-    if (role === 'sales') return [coverageItem];
-    return role === 'super_admin' || role === 'admin_area' ? [...staffNavItems, activityItem] : staffNavItems;
+    if (role === 'sales') return [coverageItem, installRequestItem];
+    const items = role === 'super_admin' || role === 'admin_area' ? [...staffNavItems, activityItem] : staffNavItems;
+    return [...items, installRequestItem];
 });
 
 const adminNavItems: NavItem[] = [
