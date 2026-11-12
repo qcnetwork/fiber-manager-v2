@@ -36,7 +36,7 @@ class CoreSpliceController extends Controller
     {
         $location = $this->location($request);
 
-        $cables = Cable::connectedTo($location)->with(['coreRows', 'stops.asset', 'from', 'to'])->orderBy('code')->get();
+        $cables = Cable::reaching($location)->with(['coreRows', 'stops.asset', 'from', 'to'])->orderBy('code')->get();
         $counts = CableCore::connectionCounts($cables->flatMap(fn (Cable $c) => $c->coreRows->modelKeys()));
         $splices = $this->splicesAt($location)->with(['coreA', 'coreB'])->orderBy('id')->get();
         // At an ODP or ODC, cores can also end on a splitter input or an output port.
@@ -98,7 +98,7 @@ class CoreSpliceController extends Controller
         ]);
 
         // Only cables that actually reach this location can be spliced here.
-        $cables = Cable::connectedTo($location)->with(['stops.asset', 'from', 'to'])->get()->keyBy('id');
+        $cables = Cable::reaching($location)->with(['stops.asset', 'from', 'to'])->get()->keyBy('id');
         $coreIds = collect($data['pairs'])->flatMap(fn (array $p) => [(int) $p['a'], (int) $p['b']])->unique();
         $cores = CableCore::whereKey($coreIds)->get()->keyBy('id');
         $used = $this->usedSides(

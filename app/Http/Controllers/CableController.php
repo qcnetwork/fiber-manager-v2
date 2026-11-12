@@ -56,13 +56,13 @@ class CableController extends Controller
             'id' => ['nullable', 'integer'],
         ]);
 
-        $user = $request->user();
-        $areaId = $user->seesAllAreas() ? (int) ($data['area_id'] ?? 0) : (int) $user->area_id;
         $asset = isset($data['kind'], $data['id']) ? Relation::getMorphedModel($data['kind'])::find($data['id']) : null;
 
-        $cables = Cable::nearby((float) $data['lat'], (float) $data['lng'], $areaId, config('odp.cable_connect_radius'))
+        $cables = Cable::nearby((float) $data['lat'], (float) $data['lng'], config('odp.cable_connect_radius'))
+            ->each(fn (array $hit) => $hit['cable']->loadMissing('area:id,code,name'))
             ->map(fn (array $hit) => [
-                ...$hit['cable']->only('id', 'code', 'type', 'cores', 'length_m'),
+                ...$hit['cable']->only('id', 'area_id', 'code', 'type', 'cores', 'length_m'),
+                'area' => $hit['cable']->area?->only('id', 'code', 'name'),
                 'distance_m' => (int) round($hit['distance']),
                 'connected' => $asset ? $hit['cable']->connects($asset) : false,
             ]);

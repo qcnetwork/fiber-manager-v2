@@ -215,6 +215,8 @@ export interface OdpPort {
 
 export interface OdcOption {
     id: number;
+    area_id: number;
+    area: { id: number; code: string; name: string } | null;
     code: string;
     name: string | null;
     capacity: number;

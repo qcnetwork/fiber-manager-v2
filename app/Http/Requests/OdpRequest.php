@@ -24,8 +24,9 @@ class OdpRequest extends NetworkAssetRequest
             'odc_id' => [
                 'nullable',
                 function (string $attribute, mixed $value, Closure $fail) use ($odc) {
-                    if (! $odc || (int) $odc->area_id !== $this->targetAreaId()) {
-                        $fail('ODC tidak ditemukan di area ini.');
+                    // Any ODC the user can see, in this area or another.
+                    if (! $odc) {
+                        $fail('ODC tidak ditemukan.');
                     }
                 },
             ],

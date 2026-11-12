@@ -6,11 +6,13 @@ use App\Models\Area;
 use App\Models\Cable;
 use App\Models\Customer;
 use App\Models\Odc;
-use App\Models\SpliceBox;
 use App\Models\Odp;
 use App\Models\OltPort;
+use App\Models\SpliceBox;
 use App\Services\CoverageService;
 use App\Services\GoogleMapsLink;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -82,7 +84,12 @@ class MapController extends Controller
         $cables = Cable::query()
             ->where('min_lat', '<=', $north)->where('max_lat', '>=', $south)
             ->where('min_lng', '<=', $east)->where('max_lng', '>=', $west)
-            ->when($data['area_id'] ?? null, fn ($q, $areaId) => $q->where('area_id', $areaId))
+            // With an area picked: its own cables, plus cables of other areas reaching one of its assets.
+            ->when($data['area_id'] ?? null, fn ($q, $areaId) => $q->where(fn ($q) => $q
+                ->where('area_id', $areaId)
+                ->orWhere(fn ($q) => $this->reachesArea($q, 'from_type', 'from_id', (int) $areaId))
+                ->orWhere(fn ($q) => $this->reachesArea($q, 'to_type', 'to_id', (int) $areaId))
+                ->orWhereHas('stops', fn ($q) => $this->reachesArea($q, 'asset_type', 'asset_id', (int) $areaId))))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->limit(self::FEATURE_LIMIT)
             ->get(['id', 'code', 'type', 'cores', 'status', 'path', 'length_m']);
@@ -299,5 +306,19 @@ class MapController extends Controller
             ->take(20);
 
         return response()->json(['radius' => $radius, 'odps' => $odps]);
+    }
+
+    /**
+     * Narrows a cable (or cable stop) query to ones whose given end is attached to a POP, ODC, ODP or joint of the area.
+     *
+     * @param  Builder<Model>  $query
+     */
+    private function reachesArea($query, string $typeColumn, string $idColumn, int $areaId): void
+    {
+        $query->where(fn ($q) => $q
+            ->where(fn ($q) => $q->where($typeColumn, 'pop')->where($idColumn, $areaId))
+            ->orWhere(fn ($q) => $q->where($typeColumn, 'odc')->whereIn($idColumn, Odc::withoutGlobalScopes()->select('id')->where('area_id', $areaId)))
+            ->orWhere(fn ($q) => $q->where($typeColumn, 'odp')->whereIn($idColumn, Odp::withoutGlobalScopes()->select('id')->where('area_id', $areaId)))
+            ->orWhere(fn ($q) => $q->where($typeColumn, 'joint')->whereIn($idColumn, SpliceBox::withoutGlobalScopes()->select('id')->where('area_id', $areaId))));
     }
 }

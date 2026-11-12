@@ -143,6 +143,17 @@ class Cable extends Model
     }
 
     /**
+     * Cables of any area that start, end or pass through the asset. Cables link areas together, so at a location
+     * the user can see (resolved through the area scope beforehand) every cable reaching it counts.
+     *
+     * @return Builder<Cable>
+     */
+    public static function reaching(Model $asset): Builder
+    {
+        return static::withoutGlobalScope('area')->connectedTo($asset);
+    }
+
+    /**
      * Whether the cable already starts, ends or passes through the asset.
      */
     public function connects(Model $asset): bool
@@ -197,16 +208,15 @@ class Cable extends Model
     }
 
     /**
-     * Cables in the area passing within the radius of a point, nearest first, with their distance in meters.
+     * Cables (of any area the user sees) passing within the radius of a point, nearest first, with their distance in meters.
      *
      * @return Collection<int, array{cable: Cable, distance: float}>
      */
-    public static function nearby(float $lat, float $lng, int $areaId, float $radius): Collection
+    public static function nearby(float $lat, float $lng, float $radius): Collection
     {
         $box = GeoService::boundingBox($lat, $lng, $radius);
 
         return static::query()
-            ->where('area_id', $areaId)
             ->where('min_lat', '<=', $box['maxLat'])->where('max_lat', '>=', $box['minLat'])
             ->where('min_lng', '<=', $box['maxLng'])->where('max_lng', '>=', $box['minLng'])
             ->get()

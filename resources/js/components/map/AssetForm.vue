@@ -69,6 +69,8 @@ interface NearbyCable {
     type: CableType;
     cores: number;
     distance_m: number;
+    area_id: number;
+    area: { id: number; code: string; name: string } | null;
     connected: boolean;
 }
 const nearbyCables = ref<NearbyCable[]>([]);
@@ -125,7 +127,8 @@ async function useGps() {
 const odcOptions = ref<OdcOption[]>([]);
 async function loadOdcOptions() {
     if (props.kind !== 'odp') return;
-    odcOptions.value = await getJson<OdcOption[]>(route('odcs.options'), { area_id: form.area_id, lat: form.lat, lng: form.lng });
+    // ODCs of every area, nearest first: an ODP may hang off an ODC across the area border.
+    odcOptions.value = await getJson<OdcOption[]>(route('odcs.options'), { lat: form.lat, lng: form.lng });
 }
 onMounted(loadOdcOptions);
 watch(() => form.area_id, loadOdcOptions);
@@ -135,18 +138,25 @@ watch(() => props.location, useDebounceFn(loadOdcOptions, 400));
 // ---- ODC uplink: PON ports of the OLTs at the chosen area's POP
 interface OltOption {
     id: number;
+    area_id: number;
     code: string;
+    area: { id: number; code: string; name: string } | null;
     ports: { id: number; slot: number; port: number; status: OltPortStatus; odcs: { id: number; code: string }[] }[];
 }
 const oltOptions = ref<OltOption[]>([]);
+/** OLTs at every POP, the chosen area's own POP first: an ODC may be fed from a POP across the area border. */
 async function loadOltOptions() {
-    if (props.kind !== 'odc' || !form.area_id) return;
-    oltOptions.value = await getJson<OltOption[]>(route('olts.options'), { area_id: form.area_id });
-    // A port of another POP no longer applies after changing the area.
-    if (form.olt_port_id && !oltOptions.value.some((o) => o.ports.some((p) => p.id === form.olt_port_id))) form.olt_port_id = null;
+    if (props.kind !== 'odc') return;
+    const olts = await getJson<OltOption[]>(route('olts.options'));
+    const own = Number(form.area_id);
+    oltOptions.value = [...olts.filter((o) => o.area_id === own), ...olts.filter((o) => o.area_id !== own)];
 }
 onMounted(loadOltOptions);
 watch(() => form.area_id, loadOltOptions);
+
+/** The area code of something in another area than the asset being edited, else null. */
+const otherArea = (item: { area_id: number; area: { code: string } | null }) =>
+    form.area_id && item.area_id !== Number(form.area_id) ? (item.area?.code ?? '?') : null;
 
 function portLabel(port: OltOption['ports'][number]) {
     const others = port.odcs.filter((o) => o.id !== odc?.id).map((o) => o.code);
@@ -299,7 +309,10 @@ function submit() {
                     />
                     <span v-else class="inline-block size-4 text-center text-green-600">✓</span>
                     <span class="inline-block h-1.5 w-4 shrink-0 rounded-full" :style="{ background: cableTypes[cable.type]?.color }" />
-                    <span class="min-w-0 flex-1 truncate">{{ cableName(cable) }}</span>
+                    <span class="min-w-0 flex-1 truncate">
+                        {{ cableName(cable) }}
+                        <span v-if="otherArea(cable)" class="text-xs text-amber-700 dark:text-amber-400">· area {{ otherArea(cable) }}</span>
+                    </span>
                     <span class="text-xs text-muted-foreground tabular-nums">
                         {{ cable.connected ? 'sudah tersambung' : `${cable.distance_m} m · ${cable.cores} core` }}
                     </span>
@@ -315,11 +328,11 @@ function submit() {
             <Label for="olt_port_id">Port PON OLT (sumber)</Label>
             <NativeSelect id="olt_port_id" v-model="form.olt_port_id">
                 <option :value="null">— Belum tersambung —</option>
-                <optgroup v-for="olt in oltOptions" :key="olt.id" :label="olt.code">
+                <optgroup v-for="olt in oltOptions" :key="olt.id" :label="`${olt.code} · POP ${olt.area?.name ?? '?'}`">
                     <option v-for="port in olt.ports" :key="port.id" :value="port.id">{{ portLabel(port) }}</option>
                 </optgroup>
             </NativeSelect>
-            <p v-if="!oltOptions.length" class="text-xs text-muted-foreground">Belum ada OLT di POP area ini. Tambahkan lewat titik POP di peta.</p>
+            <p v-if="!oltOptions.length" class="text-xs text-muted-foreground">Belum ada OLT. Tambahkan lewat titik POP di peta.</p>
             <InputError :message="form.errors.olt_port_id" />
         </div>
 
@@ -330,7 +343,8 @@ function submit() {
                     <NativeSelect id="odc_id" v-model="form.odc_id">
                         <option :value="null">— Tidak ada —</option>
                         <option v-for="odc in odcOptions" :key="odc.id" :value="odc.id">
-                            {{ odc.code }}{{ odc.distance !== null ? ` (${odc.distance} m)` : '' }}
+                            {{ odc.code }}{{ otherArea(odc) ? ` · area ${otherArea(odc)}` : ''
+                            }}{{ odc.distance !== null ? ` (${odc.distance} m)` : '' }}
                         </option>
                     </NativeSelect>
                     <InputError :message="form.errors.odc_id" />

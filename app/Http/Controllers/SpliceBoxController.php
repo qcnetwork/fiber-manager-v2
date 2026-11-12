@@ -21,7 +21,7 @@ class SpliceBoxController extends Controller
 
         return response()->json([
             'joint' => $joint,
-            'cables' => Cable::connectedTo($joint)->orderBy('code')->get(['id', 'code', 'type', 'cores', 'status', 'length_m']),
+            'cables' => Cable::reaching($joint)->orderBy('code')->get(['id', 'code', 'type', 'cores', 'status', 'length_m']),
         ]);
     }
 
