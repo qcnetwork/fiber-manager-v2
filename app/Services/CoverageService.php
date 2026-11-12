@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AssetStatus;
 use App\Models\Odp;
+use App\Models\Setting;
 use Illuminate\Support\Collection;
 
 /**
@@ -16,9 +17,30 @@ class CoverageService
 
     public function __construct(private RoutingService $routing) {}
 
+    /** Limits for the radius the super admin can set, in meters. */
+    public const MIN_RADIUS = 10;
+
+    public const MAX_RADIUS = 2000;
+
+    /**
+     * Maximum ODP–customer distance: the super admin's setting, else the configured default.
+     */
     public function radius(): int
     {
-        return (int) config('odp.coverage_radius');
+        return (int) Setting::get('coverage_radius', config('odp.coverage_radius'));
+    }
+
+    public function setRadius(int $meters): void
+    {
+        Setting::put('coverage_radius', $meters);
+    }
+
+    /**
+     * Whether distances can follow the roads at all (a routing server is configured).
+     */
+    public function routingAvailable(): bool
+    {
+        return filled(config('odp.routing.url'));
     }
 
     /**
@@ -52,13 +74,14 @@ class CoverageService
      *     nearest_outside: array<string, mixed>|null
      * }
      */
-    public function check(float $lat, float $lng): array
+    public function check(float $lat, float $lng, bool $byRoad = true): array
     {
         $radius = $this->radius();
         $near = $this->odpsNear($lat, $lng, $radius);
 
         // A road is never shorter than the straight line, so the ODPs within the radius are the only candidates.
-        $byRoad = $this->measureByRoad($lat, $lng, $near);
+        // Straight lines when the user turned road distances off (faster).
+        $byRoad = $byRoad ? $this->measureByRoad($lat, $lng, $near) : null;
         if ($byRoad !== null) {
             $near = $byRoad->filter(fn (Odp $odp) => $odp->distance <= $radius)->sortBy('distance')->values();
         }

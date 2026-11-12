@@ -197,6 +197,40 @@ class CoverageTest extends TestCase
         Http::assertSentCount(2); // one table + one route, only the first time
     }
 
+    public function test_road_distances_can_be_turned_off_for_speed()
+    {
+        $this->odpAt(0.001);
+        $this->fakeRouting([120]);
+        $this->actingAs($this->sales());
+
+        $result = $this->getJson('/coverage/check?lat=-6.2&lng=106.8&road=0')->assertOk()->json();
+
+        $this->assertSame('lurus', $result['distance_mode']);
+        Http::assertNothingSent();
+    }
+
+    public function test_super_admin_sets_the_radius_for_everyone()
+    {
+        $this->odpAt(0.002); // ~220 m
+        $admin = User::factory()->create(['role' => Role::SuperAdmin, 'area_id' => null]);
+
+        $this->actingAs($admin)->put('/admin/coverage-radius', ['radius' => 100])->assertSessionHasNoErrors();
+        $this->put('/admin/coverage-radius', ['radius' => 5])->assertSessionHasErrors('radius');
+
+        // Applies to the checks and pages of other users.
+        $this->actingAs($this->sales());
+        $result = $this->check();
+        $this->assertSame(100, $result['radius']);
+        $this->assertSame('tidak_tercover', $result['status']);
+        $this->get('/coverage')->assertInertia(fn ($page) => $page->where('radius', 100)->where('canEditRadius', false));
+
+        // Only the super admin may change it.
+        $this->put('/admin/coverage-radius', ['radius' => 300])->assertForbidden();
+        $this->actingAs(User::factory()->create(['role' => Role::AdminArea, 'area_id' => $this->area->id]))
+            ->put('/admin/coverage-radius', ['radius' => 300])->assertForbidden();
+        $this->assertSame(100, $this->check()['radius']);
+    }
+
     public function test_radius_comes_from_configuration()
     {
         config(['odp.coverage_radius' => 100]);

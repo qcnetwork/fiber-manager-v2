@@ -40,7 +40,8 @@ return [
 
     'routing' => [
         'url' => env('ROUTING_URL', 'https://routing.openstreetmap.de/routed-foot'),
-        'timeout' => (int) env('ROUTING_TIMEOUT', 4),
+        // The public server can take several seconds to answer.
+        'timeout' => (int) env('ROUTING_TIMEOUT', 10),
         'max_candidates' => 10,
     ],
 

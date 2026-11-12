@@ -8,7 +8,7 @@ import { formatLength } from '@/lib/cables';
 import { geocode, precisionWarning, resolveLocation, type GeocodeResult, type LocationPrecision } from '@/lib/coordinates';
 import { currentPosition, getJson } from '@/lib/http';
 import type { Area, BreadcrumbItem, CableLine, OdcMarker, OdpMarker, SharedData } from '@/types';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 import {
     ChevronDown,
     ChevronUp,
@@ -24,11 +24,12 @@ import {
     Minimize,
     PanelLeftClose,
     PanelLeftOpen,
+    Pencil,
     Search,
     TriangleAlert,
 } from '@lucide/vue';
 import { useFullscreen } from '@vueuse/core';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 interface CoverageOdp {
     id: number;
@@ -59,8 +60,49 @@ interface CoverageResult {
 
 const props = defineProps<{
     radius: number;
+    radiusLimits: [number, number];
+    routingAvailable: boolean;
+    canEditRadius: boolean;
     areas: Area[];
 }>();
+
+// ---- Road distances on/off: off is faster (no wait for the routing server). Remembered per browser.
+const ROAD_KEY = 'odp-coverage-road';
+function initialRoad(): boolean {
+    try {
+        return localStorage.getItem(ROAD_KEY) !== '0';
+    } catch {
+        return true;
+    }
+}
+const roadOn = ref(initialRoad());
+watch(roadOn, (on) => {
+    try {
+        localStorage.setItem(ROAD_KEY, on ? '1' : '0');
+    } catch {
+        // storage unavailable
+    }
+    recheck();
+});
+
+// ---- Super admin: change the coverage radius for everyone
+const editingRadius = ref(false);
+const radiusForm = useForm({ radius: props.radius });
+function editRadius() {
+    radiusForm.radius = props.radius;
+    radiusForm.clearErrors();
+    editingRadius.value = true;
+}
+function saveRadius() {
+    radiusForm.put(route('admin.coverage-radius.update'), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            editingRadius.value = false;
+            recheck();
+        },
+    });
+}
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Cek Coverage', href: '/coverage' }];
 const mapRef = ref<InstanceType<typeof NetworkMap>>();
@@ -124,13 +166,19 @@ async function check(lat: number, lng: number, from: LocationPrecision = 'exact'
     checking.value = true;
     error.value = '';
     try {
-        result.value = await getJson<CoverageResult>(route('coverage.check'), { lat, lng });
+        const road = props.routingAvailable && roadOn.value ? 1 : 0;
+        result.value = await getJson<CoverageResult>(route('coverage.check'), { lat, lng, road });
         mapRef.value?.showRadius(lat, lng, props.radius);
     } catch (e) {
         error.value = (e as Error).message;
     } finally {
         checking.value = false;
     }
+}
+
+// Checks the same point again after a setting changed.
+function recheck() {
+    if (point.value) check(point.value.lat, point.value.lng, precision.value);
 }
 
 const mapOverlay = computed(() => {
@@ -275,7 +323,40 @@ async function copyResult() {
                     <div class="mb-3 flex items-start justify-between gap-2 max-md:mb-2">
                         <div>
                             <h1 class="text-lg font-semibold max-md:hidden">Cek coverage calon pelanggan</h1>
-                            <p class="text-sm text-muted-foreground max-md:text-xs">Batas jarak ODP ke pelanggan: {{ radius }} m.</p>
+                            <form v-if="editingRadius" class="mt-1 flex flex-wrap items-center gap-1.5 text-sm" @submit.prevent="saveRadius">
+                                <label for="coverage-radius" class="text-muted-foreground">Batas jarak</label>
+                                <Input
+                                    id="coverage-radius"
+                                    v-model.number="radiusForm.radius"
+                                    type="number"
+                                    :min="radiusLimits[0]"
+                                    :max="radiusLimits[1]"
+                                    step="10"
+                                    class="h-8 w-24"
+                                />
+                                <span class="text-muted-foreground">m</span>
+                                <Button type="submit" size="sm" class="h-8" :disabled="radiusForm.processing">Simpan</Button>
+                                <Button type="button" variant="ghost" size="sm" class="h-8" @click="editingRadius = false">Batal</Button>
+                                <p v-if="radiusForm.errors.radius" class="w-full text-xs text-red-600">{{ radiusForm.errors.radius }}</p>
+                            </form>
+                            <p v-else class="flex items-center gap-1 text-sm text-muted-foreground max-md:text-xs">
+                                Batas jarak ODP ke pelanggan: {{ radius }} m.
+                                <button
+                                    v-if="canEditRadius"
+                                    type="button"
+                                    class="rounded p-1 hover:bg-muted hover:text-foreground"
+                                    title="Ubah batas jarak (berlaku untuk semua pengguna)"
+                                    @click="editRadius"
+                                >
+                                    <Pencil class="size-3.5" />
+                                    <span class="sr-only">Ubah batas jarak</span>
+                                </button>
+                            </p>
+                            <label v-if="routingAvailable" class="mt-1.5 flex w-fit cursor-pointer items-center gap-2 text-sm max-md:text-xs">
+                                <input v-model="roadOn" type="checkbox" class="size-4 accent-primary" />
+                                <span>Hitung jarak lewat jalan</span>
+                                <span class="text-xs text-muted-foreground">{{ roadOn ? '(lebih akurat)' : '(garis lurus, lebih cepat)' }}</span>
+                            </label>
                         </div>
                         <div class="flex shrink-0 gap-1">
                             <Button
@@ -436,7 +517,9 @@ async function copyResult() {
                             OSRM/FOSSGIS.
                         </p>
                         <p v-else class="text-xs text-muted-foreground">
-                            Jarak dihitung garis lurus dari titik lokasi ke ODP (server rute jalan sedang tidak tersedia).
+                            Jarak dihitung garis lurus dari titik lokasi ke ODP{{
+                                routingAvailable && roadOn ? ' (server rute jalan sedang tidak tersedia)' : ''
+                            }}.
                         </p>
                     </div>
                 </section>

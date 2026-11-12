@@ -85,6 +85,7 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::middleware(EnsureSuperAdmin::class)->prefix('admin')->name('admin.')->group(function () {
         Route::resource('areas', AreaController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('users', UserController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::put('coverage-radius', [CoverageController::class, 'updateRadius'])->name('coverage-radius.update');
     });
 });
 
