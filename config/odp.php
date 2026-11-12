@@ -26,4 +26,22 @@ return [
 
     'cable_connect_radius' => (int) env('CABLE_CONNECT_RADIUS', 30),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Road routing for the coverage check
+    |--------------------------------------------------------------------------
+    |
+    | OSRM server used to measure the distance to an ODP along the roads
+    | instead of in a straight line. Defaults to the public FOSSGIS foot
+    | server (light use only, about one request per second). Leave the URL
+    | empty to always use straight-line distances.
+    |
+    */
+
+    'routing' => [
+        'url' => env('ROUTING_URL', 'https://routing.openstreetmap.de/routed-foot'),
+        'timeout' => (int) env('ROUTING_TIMEOUT', 4),
+        'max_candidates' => 10,
+    ],
+
 ];

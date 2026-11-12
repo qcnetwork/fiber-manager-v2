@@ -40,11 +40,17 @@ interface CoverageOdp {
     used_ports: number;
     free_ports: number;
     status: string;
+    /** Set when `distance` follows the roads. */
+    straight_distance: number | null;
+    /** Road path [lat, lng] to the highlighted ODP. */
+    route: [number, number][] | null;
 }
 
 interface CoverageResult {
     status: 'tercover' | 'penuh' | 'tidak_tercover';
     radius: number;
+    /** 'jalan': distances follow the roads; 'lurus': straight lines (routing off or unavailable). */
+    distance_mode: 'jalan' | 'lurus';
     available: CoverageOdp[];
     full: CoverageOdp[];
     planned: CoverageOdp[];
@@ -183,32 +189,36 @@ function onMapClick(lat: number, lng: number) {
 }
 
 // ---- Result presentation
+// Distances follow the roads unless the routing server was unavailable.
+const byRoad = computed(() => result.value?.distance_mode === 'jalan');
+const via = computed(() => (byRoad.value ? ' lewat jalan' : ''));
+
 const verdict = computed(() => {
     const r = result.value;
     if (!r) return null;
     return {
         tercover: {
             title: 'Tercover',
-            text: `Ada ODP dengan port kosong dalam jarak ${r.radius} m.`,
+            text: `Ada ODP dengan port kosong dalam jarak ${r.radius} m${via.value}.`,
             icon: CircleCheck,
             tone: 'border-green-600 bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200',
         },
         penuh: {
             title: 'ODP penuh',
-            text: `Ada ODP dalam ${r.radius} m, tetapi semua port-nya terpakai. Ajukan penambahan kapasitas ke tim teknis.`,
+            text: `Ada ODP dalam ${r.radius} m${via.value}, tetapi semua port-nya terpakai. Ajukan penambahan kapasitas ke tim teknis.`,
             icon: CircleAlert,
             tone: 'border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100',
         },
         tidak_tercover: {
             title: 'Belum tercover',
-            text: `Tidak ada ODP aktif dengan port kosong dalam ${r.radius} m.`,
+            text: `Tidak ada ODP aktif dengan port kosong dalam ${r.radius} m${via.value}.`,
             icon: CircleX,
             tone: 'border-red-600 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200',
         },
     }[r.status];
 });
 
-// Straight-line distance close to the limit may not hold once the drop follows poles.
+// A distance close to the limit may not hold once the drop follows the poles.
 const nearLimit = computed(() => {
     const best = result.value?.available[0];
     return best && best.distance > result.value!.radius * 0.8;
@@ -226,7 +236,7 @@ async function copyResult() {
         `Cek coverage ${new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`,
         `Lokasi: ${point.value.lat.toFixed(6)}, ${point.value.lng.toFixed(6)}${precision.value === 'exact' ? '' : ' (dari link Google Maps, perlu dicek)'}`,
         mapsUrl.value,
-        `Hasil: ${verdict.value.title.toUpperCase()} (batas ${r.radius} m)`,
+        `Hasil: ${verdict.value.title.toUpperCase()} (batas ${r.radius} m, jarak ${byRoad.value ? 'lewat jalan' : 'garis lurus'})`,
         best ? `ODP: ${best.code} — ${best.distance} m, ${best.free_ports} port kosong` : null,
         !best && r.full[0] ? `ODP terdekat (penuh): ${r.full[0].code} — ${r.full[0].distance} m` : null,
         !best && r.nearest_outside
@@ -421,7 +431,13 @@ async function copyResult() {
                                 ><ExternalLink class="size-4" /> Google Maps</Button
                             >
                         </div>
-                        <p class="text-xs text-muted-foreground">Jarak dihitung garis lurus dari titik lokasi ke ODP.</p>
+                        <p v-if="byRoad" class="text-xs text-muted-foreground">
+                            Jarak dihitung lewat jalan (perkiraan, jalur kabel bisa berbeda). Data jalan © OpenStreetMap contributors, rute oleh
+                            OSRM/FOSSGIS.
+                        </p>
+                        <p v-else class="text-xs text-muted-foreground">
+                            Jarak dihitung garis lurus dari titik lokasi ke ODP (server rute jalan sedang tidak tersedia).
+                        </p>
                     </div>
                 </section>
 

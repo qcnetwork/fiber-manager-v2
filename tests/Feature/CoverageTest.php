@@ -9,6 +9,8 @@ use App\Models\Cable;
 use App\Models\Odp;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class CoverageTest extends TestCase
@@ -82,6 +84,117 @@ class CoverageTest extends TestCase
         $this->assertSame('tidak_tercover', $result['status']);
         $this->assertCount(1, $result['planned']);
         $this->assertSame($far->id, $result['nearest_outside']['id']);
+    }
+
+    private function fakeRouting(array $tableDistances, array $snaps = [0, 0, 0, 0]): void
+    {
+        config(['odp.routing.url' => 'https://osrm.test/routed-foot']);
+        Http::fake([
+            'osrm.test/routed-foot/table/*' => Http::response([
+                'code' => 'Ok',
+                'distances' => [[0, ...$tableDistances]],
+                'sources' => [['distance' => $snaps[0]]],
+                'destinations' => array_map(fn ($d) => ['distance' => $d], $snaps),
+            ]),
+            'osrm.test/routed-foot/route/*' => Http::response([
+                'code' => 'Ok',
+                'routes' => [['geometry' => ['type' => 'LineString', 'coordinates' => [[106.8, -6.2001], [106.801, -6.2001]]]]],
+            ]),
+        ]);
+    }
+
+    public function test_distance_follows_the_roads_when_routing_works()
+    {
+        // 110 m straight but 400 m by road (across a river): not covered.
+        $acrossRiver = $this->odpAt(0.001);
+        // 165 m straight, 180 m by road plus 10 m from each point to the road.
+        $sameStreet = $this->odpAt(0.0015);
+        $this->fakeRouting([400, 180], [10, 10, 10]);
+
+        $this->actingAs($this->sales());
+        $result = $this->check();
+
+        $this->assertSame('jalan', $result['distance_mode']);
+        $this->assertSame([$sameStreet->id], array_column($result['available'], 'id'));
+        $this->assertSame(200, $result['available'][0]['distance']);
+        $this->assertEqualsWithDelta(165, $result['available'][0]['straight_distance'], 5);
+        // The path runs from the point, along the road, to the ODP.
+        $route = $result['available'][0]['route'];
+        $this->assertSame([-6.2, 106.8], $route[0]);
+        $this->assertSame([-6.2001, 106.8], $route[1]);
+        $this->assertEqualsWithDelta([$sameStreet->lat, $sameStreet->lng], end($route), 1e-9);
+        $this->assertNotContains($acrossRiver->id, array_column($result['full'], 'id'));
+
+        // OSRM gets lng,lat with the customer first, and an identifying User-Agent.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/table/v1/driving/106.8,-6.2;106.801,-6.2;106.8015,-6.2')
+            && str_starts_with($request->header('User-Agent')[0], 'FiberManager'));
+    }
+
+    public function test_odp_only_close_in_a_straight_line_is_not_covered_by_road()
+    {
+        $acrossRiver = $this->odpAt(0.001); // ~110 m straight
+        $this->fakeRouting([400]);
+
+        $this->actingAs($this->sales());
+        $result = $this->check();
+
+        $this->assertSame('tidak_tercover', $result['status']);
+        // Shown as the closest free ODP, with its road distance.
+        $this->assertSame($acrossRiver->id, $result['nearest_outside']['id']);
+        $this->assertSame(400, $result['nearest_outside']['distance']);
+    }
+
+    public function test_falls_back_to_straight_lines_when_routing_fails()
+    {
+        $near = $this->odpAt(0.002); // ~220 m
+        config(['odp.routing.url' => 'https://osrm.test/routed-foot']);
+        Http::fake(['osrm.test/*' => Http::response('Bad Gateway', 502)]);
+
+        $this->actingAs($this->sales());
+        $result = $this->check();
+
+        $this->assertSame('lurus', $result['distance_mode']);
+        $this->assertSame('tercover', $result['status']);
+        $this->assertSame([$near->id], array_column($result['available'], 'id'));
+        $this->assertNull($result['available'][0]['route']);
+    }
+
+    public function test_an_unreachable_routing_server_is_skipped_for_a_while()
+    {
+        $this->odpAt(0.001);
+        config(['odp.routing.url' => 'https://osrm.test/routed-foot']);
+        $attempts = 0;
+        $up = false;
+        Http::fake(function () use (&$attempts, &$up) {
+            $attempts++;
+            if (! $up) {
+                throw new ConnectionException('timed out');
+            }
+
+            return Http::response(['code' => 'Ok', 'distances' => [[0, 120]], 'sources' => [[]], 'destinations' => [[], []], 'routes' => []]);
+        });
+        $this->actingAs($this->sales());
+
+        $this->assertSame('lurus', $this->check()['distance_mode']);
+        $this->assertSame('lurus', $this->check()['distance_mode']);
+        $this->assertSame(1, $attempts); // the second check didn't wait for the server again
+
+        // Tried again after a few minutes.
+        $up = true;
+        $this->travel(6)->minutes();
+        $this->assertSame('jalan', $this->check()['distance_mode']);
+    }
+
+    public function test_routing_answers_are_cached()
+    {
+        $this->odpAt(0.001);
+        $this->fakeRouting([120]);
+        $this->actingAs($this->sales());
+
+        $this->check();
+        $this->check();
+
+        Http::assertSentCount(2); // one table + one route, only the first time
     }
 
     public function test_radius_comes_from_configuration()
