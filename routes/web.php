@@ -73,6 +73,7 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::delete('terminations/{termination}', [CoreTerminationController::class, 'destroy'])->name('terminations.destroy');
     Route::apiResource('cables', CableController::class)->except('index');
     Route::post('photos', [PhotoController::class, 'store'])->name('photos.store');
+    Route::get('photos/{photo}/file', [PhotoController::class, 'file'])->name('photos.file');
     Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->name('photos.destroy');
 
     Route::get('data', [DataTransferController::class, 'index'])->name('data.index');

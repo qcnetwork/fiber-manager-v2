@@ -115,7 +115,7 @@ let myLocation: L.CircleMarker | null = null;
 
 const isSelected = (kind: MapItemKind, id: number) => props.selected?.kind === kind && props.selected.id === id;
 
-// Names are typed by people, unlike asset codes.
+// Everything typed by people (names, codes) goes through this before it lands in tooltip/popup HTML.
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
 function renderAssets() {
@@ -137,7 +137,7 @@ function renderAssets() {
 
     for (const odc of props.odcs) {
         L.marker([odc.lat, odc.lng], { icon: odcIcon(odc.status, isSelected('odc', odc.id)), zIndexOffset: 1000 })
-            .bindTooltip(`<b>${odc.code}</b><br>${odc.odps_count} ODP`, { direction: 'top', offset: [0, -10] })
+            .bindTooltip(`<b>${escapeHtml(odc.code)}</b><br>${odc.odps_count} ODP`, { direction: 'top', offset: [0, -10] })
             .on('click', (e) => onAssetClick(e, 'odc', odc.id))
             .addTo(odcLayer);
 
@@ -154,7 +154,7 @@ function renderAssets() {
 
     for (const odp of props.odps) {
         L.marker([odp.lat, odp.lng], { icon: odpIcon(odp, isSelected('odp', odp.id)) })
-            .bindTooltip(`<b>${odp.code}</b><br>Port ${odp.used_ports}/${odp.capacity} terpakai`, { direction: 'top', offset: [0, -8] })
+            .bindTooltip(`<b>${escapeHtml(odp.code)}</b><br>Port ${odp.used_ports}/${odp.capacity} terpakai`, { direction: 'top', offset: [0, -8] })
             .on('click', (e) => onAssetClick(e, 'odp', odp.id))
             .addTo(odpTarget());
 
@@ -190,7 +190,7 @@ function renderCables() {
             bubblingMouseEvents: false,
         })
             .bindTooltip(
-                `<b>${cable.code ?? 'Kabel ' + cableTypes[cable.type]?.label}</b><br>${cable.cores} core · ${formatLength(cable.length_m)}`,
+                `<b>${escapeHtml(cable.code ?? 'Kabel ' + cableTypes[cable.type]?.label)}</b><br>${cable.cores} core · ${formatLength(cable.length_m)}`,
                 { sticky: true },
             )
             .on('click', (e) => onCableClick(e, cable))

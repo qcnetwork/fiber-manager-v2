@@ -69,7 +69,8 @@ class MapController extends Controller
             ->get(['id', 'olt_port_id', 'code', 'name', 'lat', 'lng', 'status', 'capacity']);
 
         $pops = $request->user()->isSales() ? collect() : $this->popsInView($request, $data, [$west, $south, $east, $north]);
-        $popLocations = Area::whereIn('id', $odcs->pluck('oltPort.olt.area_id')->filter()->unique())->get(['id', 'center_lat', 'center_lng'])->keyBy('id');
+        // POP locations stay hidden from sales, guide lines included.
+        $popLocations = $request->user()->isSales() ? collect() : Area::whereIn('id', $odcs->pluck('oltPort.olt.area_id')->filter()->unique())->get(['id', 'center_lat', 'center_lng'])->keyBy('id');
 
         $odps = $inView(Odp::query())
             ->withPortUsage()
@@ -201,10 +202,11 @@ class MapController extends Controller
             return null;
         };
 
-        $assetFields = ['address' => 'Alamat', 'notes' => 'Catatan'];
+        // Sales find ODC/ODP by code or name only: addresses and notes may mention customers.
+        $assetFields = $user->isSales() ? [] : ['address' => 'Alamat', 'notes' => 'Catatan'];
         $odcs = $find(Odc::query(), ['code', 'name'], array_keys($assetFields), 10)
             ->get(['id', 'code', 'name', 'lat', 'lng', 'address', 'notes']);
-        $odpFields = [...$assetFields, 'pole_number' => 'Tiang'];
+        $odpFields = $user->isSales() ? [] : [...$assetFields, 'pole_number' => 'Tiang'];
         $odps = $find(Odp::query(), ['code', 'name'], array_keys($odpFields), 10)
             ->get(['id', 'code', 'name', 'lat', 'lng', 'address', 'notes', 'pole_number']);
 

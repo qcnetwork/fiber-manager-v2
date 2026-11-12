@@ -29,6 +29,7 @@ class DataTransferController extends Controller
             'areas' => $user->seesAllAreas() ? Area::orderBy('name')->get(['id', 'code', 'name']) : [],
             'can' => [
                 'import' => $user->canDeleteNetwork(),
+                'export' => $user->canEditNetwork(),
                 'chooseArea' => $user->seesAllAreas(),
             ],
             'maxRows' => NetworkImporter::MAX_ROWS,
@@ -38,6 +39,8 @@ class DataTransferController extends Controller
     public function export(Request $request, string $format): StreamedResponse
     {
         abort_unless(in_array($format, ['xlsx', 'kml'], true), 404);
+        // A full export holds customer data on the port sheet: not for view-only accounts.
+        abort_unless($request->user()->canEditNetwork(), 403);
 
         // Non-super users are limited to their area by the model scope; area_id only narrows it further.
         $areaId = $request->user()->seesAllAreas() ? $request->integer('area_id') ?: null : null;

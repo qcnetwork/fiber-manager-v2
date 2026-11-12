@@ -23,7 +23,7 @@ interface ImportResult {
 
 const props = defineProps<{
     areas: { id: number; code: string; name: string }[];
-    can: { import: boolean; chooseArea: boolean };
+    can: { import: boolean; export: boolean; chooseArea: boolean };
     maxRows: number;
 }>();
 
@@ -74,7 +74,7 @@ const MAX_SHOWN = 200;
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="grid flex-1 items-start gap-4 p-4 lg:grid-cols-2">
             <!-- Export -->
-            <Card>
+            <Card v-if="can.export">
                 <CardHeader>
                     <CardTitle class="flex items-center gap-2 text-base"><Download class="size-4" /> Ekspor data</CardTitle>
                     <CardDescription>Unduh semua ODC, ODP, pelanggan, dan jalur kabel.</CardDescription>

@@ -55,6 +55,7 @@ const activityItem: NavItem = {
 const mainNavItems = computed(() => {
     const role = page.props.auth.user.role;
     if (role === 'sales') return [coverageItem, installRequestItem];
+    if (role === 'viewer') return [...staffNavItems.filter((item) => item.href !== '/data'), installRequestItem]; // export holds customer data
     const items = role === 'super_admin' || role === 'admin_area' ? [...staffNavItems, activityItem] : staffNavItems;
     return [...items, installRequestItem];
 });

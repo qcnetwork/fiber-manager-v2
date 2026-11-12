@@ -8,6 +8,8 @@ use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\OdpPort;
 use App\Models\OltPort;
+use OpenSpout\Common\Entity\Cell;
+use OpenSpout\Common\Entity\Cell\StringCell;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Writer;
@@ -27,7 +29,7 @@ class ExcelExporter
 
         $this->sheet($writer, 'ODC', [...Columns::ODC, 'area', 'jumlah_odp'], [16, 24, 12, 12, 30, 10, 10, 10, 14, 30, 18, 9, 9, 14, 12], first: true);
         $inArea(Odc::query())->with(['area:id,code', 'oltPort.olt:id,code'])->withCount('odps')->orderBy('code')->lazy()->each(
-            fn (Odc $odc) => $writer->addRow(Row::fromValues([
+            fn (Odc $odc) => $writer->addRow($this->row([
                 $odc->code, $odc->name, $odc->lat, $odc->lng, $odc->address, $odc->capacity, $odc->splitter_ratio,
                 $odc->status->value, $odc->installed_at?->format('Y-m-d'), $odc->notes,
                 $odc->oltPort?->olt?->code, $odc->oltPort?->slot, $odc->oltPort?->port,
@@ -44,14 +46,14 @@ class ExcelExporter
             ->orderBy('olts.code')->orderBy('olt_ports.slot')->orderBy('olt_ports.port')
             ->select('olt_ports.*')
             ->lazy()
-            ->each(fn (OltPort $port) => $writer->addRow(Row::fromValues([
+            ->each(fn (OltPort $port) => $writer->addRow($this->row([
                 $port->olt->area?->name, $port->olt->code, $port->olt->brand, $port->olt->ip_address, $port->slot, $port->port,
                 $port->status, $port->odcs->pluck('code')->implode(', ') ?: null,
             ])));
 
         $this->sheet($writer, 'ODP', [...Columns::ODP, 'area', 'port_terpakai', 'port_kosong'], [18, 20, 16, 9, 12, 12, 30, 10, 10, 10, 10, 14, 30, 8, 13, 12]);
         $inArea(Odp::query())->with(['area:id,code', 'odc:id,code'])->withPortUsage()->orderBy('code')->lazy()->each(
-            fn (Odp $odp) => $writer->addRow(Row::fromValues([
+            fn (Odp $odp) => $writer->addRow($this->row([
                 $odp->code, $odp->name, $odp->odc?->code, $odp->odc_port, $odp->lat, $odp->lng, $odp->address, $odp->pole_number,
                 $odp->capacity, $odp->splitter_ratio, $odp->status->value, $odp->installed_at?->format('Y-m-d'), $odp->notes,
                 $odp->area?->code, $odp->used_ports, $odp->free_ports,
@@ -67,14 +69,14 @@ class ExcelExporter
             ->orderBy('odps.code')->orderBy('odp_ports.number')
             ->select('odp_ports.*')
             ->lazy()
-            ->each(fn (OdpPort $port) => $writer->addRow(Row::fromValues([
+            ->each(fn (OdpPort $port) => $writer->addRow($this->row([
                 $port->odp->code, $port->number, $port->status->value, $port->customer?->name, $port->customer?->customer_code,
                 $port->customer?->phone, $port->customer?->address, $port->customer?->package, $port->customer?->ont_sn, $port->notes,
             ])));
 
         $this->sheet($writer, 'Kabel', ['kode', 'jenis', 'core', 'status', 'dari', 'ke', 'panjang_m', 'jumlah_titik', 'catatan'], [18, 12, 8, 10, 18, 18, 11, 12, 30]);
         $inArea(Cable::query())->with(['from:id,code', 'to:id,code'])->orderBy('type')->orderBy('code')->lazy()->each(
-            fn (Cable $cable) => $writer->addRow(Row::fromValues([
+            fn (Cable $cable) => $writer->addRow($this->row([
                 $cable->code, $cable->type->value, $cable->cores, $cable->status->value, $cable->from?->code, $cable->to?->code,
                 $cable->length_m, count($cable->path), $cable->notes,
             ])),
@@ -112,6 +114,17 @@ class ExcelExporter
         $this->sheet($writer, 'ODP', Columns::ODP, [18, 20, 16, 9, 12, 12, 30, 10, 10, 10, 10, 14, 30]);
 
         $writer->close();
+    }
+
+    /**
+     * A data row whose text always stays text: OpenSpout turns strings starting with "=" into live
+     * formulas, so an address like =HYPERLINK(...) typed in the app would run in Excel.
+     *
+     * @param  list<bool|float|int|string|null>  $values
+     */
+    private function row(array $values): Row
+    {
+        return new Row(array_map(fn ($value) => is_string($value) ? new StringCell($value, null) : Cell::fromValue($value), $values));
     }
 
     private function open(string $outputPath): Writer

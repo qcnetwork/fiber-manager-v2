@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\NetworkLocation;
 use App\Enums\AssetStatus;
 use App\Enums\CableType;
 use App\Models\Area;
@@ -67,10 +68,10 @@ class CableRequest extends FormRequest
     {
         return function (string $attribute, mixed $value, Closure $fail) {
             // from_id goes with from_type, stops.3.id with stops.3.type.
-            $class = Relation::getMorphedModel((string) $this->input(preg_replace('/id$/', 'type', $attribute)));
+            $type = (string) $this->input(preg_replace('/id$/', 'type', $attribute));
 
-            // Resolved through the area scope: assets the user can't see don't count.
-            if (! $class || ! $class::find($value)) {
+            // Assets the user can't see (other areas' POPs included) don't count.
+            if (! NetworkLocation::find($type, $value)) {
                 $fail(str_starts_with($attribute, 'stops') ? 'Titik sambung tidak ditemukan.' : 'Aset di ujung kabel tidak ditemukan.');
             }
         };

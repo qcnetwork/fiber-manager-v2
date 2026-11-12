@@ -8,6 +8,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -50,6 +51,9 @@ class ProfileController extends Controller
         ]);
 
         $user = $request->user();
+        if ($user->isLastSuperAdmin()) {
+            throw ValidationException::withMessages(['password' => 'Akun ini satu-satunya super admin dan tidak bisa dihapus. Jadikan pengguna lain super admin terlebih dahulu.']);
+        }
 
         Auth::logout();
 
