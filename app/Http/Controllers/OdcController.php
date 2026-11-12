@@ -66,7 +66,7 @@ class OdcController extends Controller
     }
 
     /**
-     * ODCs to choose from when connecting an ODP, closest to the given point first.
+     * ODCs to choose from when connecting an ODP, closest to the given point first; from every area unless one is given.
      */
     public function options(Request $request): JsonResponse
     {
@@ -78,10 +78,11 @@ class OdcController extends Controller
 
         $odcs = Odc::query()
             ->when($data['area_id'] ?? null, fn ($q, $areaId) => $q->where('area_id', $areaId))
-            ->with('odps:id,odc_id,odc_port')
-            ->get(['id', 'code', 'name', 'lat', 'lng', 'capacity'])
+            ->with(['odps:id,odc_id,odc_port', 'area:id,code,name'])
+            ->get(['id', 'area_id', 'code', 'name', 'lat', 'lng', 'capacity'])
             ->map(fn (Odc $odc) => [
-                ...$odc->only('id', 'code', 'name', 'capacity'),
+                ...$odc->only('id', 'area_id', 'code', 'name', 'capacity'),
+                'area' => $odc->area?->only('id', 'code', 'name'),
                 'used_ports' => $odc->odps->pluck('odc_port')->filter()->values(),
                 'distance' => isset($data['lat'], $data['lng'])
                     ? round(GeoService::distance((float) $data['lat'], (float) $data['lng'], $odc->lat, $odc->lng))

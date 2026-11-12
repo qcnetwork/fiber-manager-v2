@@ -7,6 +7,7 @@ use App\Models\Cable;
 use App\Models\Odc;
 use App\Models\Odp;
 use App\Models\SpliceBox;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
@@ -37,19 +38,14 @@ abstract class NetworkAssetRequest extends FormRequest
             'status' => ['required', Rule::enum(AssetStatus::class)],
             'installed_at' => ['nullable', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
-            // Cables passing nearby to connect the asset to (it becomes a cable end or pass-through point).
+            // Cables passing nearby to connect the asset to (it becomes a cable end or pass-through point), from any area.
             'connect_cables' => ['nullable', 'array', 'max:20'],
-            'connect_cables.*' => ['integer', Rule::exists('cables', 'id')->where('area_id', $this->targetAreaId())],
-        ];
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function messages(): array
-    {
-        return [
-            'connect_cables.*.exists' => 'Kabel yang dipilih tidak ada di area ini.',
+            'connect_cables.*' => ['integer', function (string $attribute, mixed $value, Closure $fail) {
+                // Resolved through the area scope: cables the user can't see don't count.
+                if (! Cable::whereKey($value)->exists()) {
+                    $fail('Kabel yang dipilih tidak ditemukan.');
+                }
+            }],
         ];
     }
 

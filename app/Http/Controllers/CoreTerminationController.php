@@ -52,7 +52,7 @@ class CoreTerminationController extends Controller
 
         $label = strtoupper($where['location_type']);
         $core = CableCore::find($data['core_id']);
-        $cable = $core ? Cable::connectedTo($location)->with(['stops.asset', 'from', 'to'])->find($core->cable_id) : null;
+        $cable = $core ? Cable::reaching($location)->with(['stops.asset', 'from', 'to'])->find($core->cable_id) : null;
         if (! $cable) {
             throw ValidationException::withMessages(['core_id' => "Core harus milik kabel yang tersambung ke {$label} ini."]);
         }

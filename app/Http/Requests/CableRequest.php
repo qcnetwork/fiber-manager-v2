@@ -60,20 +60,18 @@ class CableRequest extends FormRequest
     }
 
     /**
-     * A POP/ODC/ODP a cable end or pass-through point is attached to must be visible to the user and in the cable's area (a POP is the area itself).
+     * A POP/ODC/ODP/joint a cable end or pass-through point is attached to must exist and be visible to the user.
+     * It may lie in another area than the cable: cables link areas together.
      */
     private function assetInArea(): Closure
     {
         return function (string $attribute, mixed $value, Closure $fail) {
             // from_id goes with from_type, stops.3.id with stops.3.type.
             $class = Relation::getMorphedModel((string) $this->input(preg_replace('/id$/', 'type', $attribute)));
-            $asset = $class ? $class::find($value) : null;
-            $areaId = $this->user()->seesAllAreas() ? (int) $this->input('area_id') : $this->user()->area_id;
 
-            $assetArea = $asset instanceof Area ? $asset->id : $asset?->area_id;
-
-            if (! $asset || (int) $assetArea !== $areaId) {
-                $fail(str_starts_with($attribute, 'stops') ? 'Titik sambung harus POP/ODC/ODP di area yang sama.' : 'Ujung kabel harus POP/ODC/ODP di area yang sama.');
+            // Resolved through the area scope: assets the user can't see don't count.
+            if (! $class || ! $class::find($value)) {
+                $fail(str_starts_with($attribute, 'stops') ? 'Titik sambung tidak ditemukan.' : 'Aset di ujung kabel tidak ditemukan.');
             }
         };
     }

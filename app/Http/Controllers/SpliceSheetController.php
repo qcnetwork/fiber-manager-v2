@@ -39,7 +39,7 @@ class SpliceSheetController extends Controller
         $splices = CoreSplice::where('location_type', $kind)->where('location_id', $id)->with(['coreA', 'coreB'])->get();
         // At an ODP or ODC, cores ending on a splitter input or output port are rows too.
         $terminations = $location instanceof Odp || $location instanceof Odc ? CoreTermination::at($location)->with('core')->get() : collect();
-        $cables = Cable::connectedTo($location)->orderBy('code')->get(['id', 'code', 'type', 'cores', 'tube_size']);
+        $cables = Cable::reaching($location)->orderBy('code')->get(['id', 'code', 'type', 'cores', 'tube_size']);
         $splicedPerCable = $splices->flatMap(fn (CoreSplice $s) => [$s->coreA, $s->coreB])
             ->merge($terminations->pluck('core')->all())
             ->countBy('cable_id');

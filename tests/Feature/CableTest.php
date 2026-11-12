@@ -188,9 +188,9 @@ class CableTest extends TestCase
         $this->assertTrue($this->getJson("/cables/nearby?lat=-6.20005&lng=106.801&kind=odp&id={$new->id}")->json('cables.0.connected'));
     }
 
-    public function test_cannot_connect_to_a_cable_in_another_area()
+    public function test_cannot_connect_to_a_cable_the_user_cannot_see()
     {
-        // Created while signed in, so the area hook puts it in our area; move it out directly.
+        // An area admin sees only their own area; the cable is moved out of it directly.
         $cable = Cable::create(['type' => 'drop', 'cores' => 1, 'path' => [[-6.2, 106.8], [-6.2, 106.801]]]);
         Cable::withoutGlobalScopes()->whereKey($cable->id)->update(['area_id' => Area::factory()->create()->id]);
 
@@ -223,7 +223,7 @@ class CableTest extends TestCase
 
     public function test_cable_cannot_end_at_an_asset_in_another_area()
     {
-        // Created while signed in, so the area hook puts it in our area; move it out directly.
+        // An area admin sees only their own area; the cable is moved out of it directly.
         $foreign = Odp::factory()->create();
         Odp::withoutGlobalScopes()->whereKey($foreign->id)->update(['area_id' => Area::factory()->create()->id]);
 

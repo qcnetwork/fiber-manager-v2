@@ -68,12 +68,13 @@ class OltController extends Controller
 
         $olts = Olt::query()
             ->when($data['area_id'] ?? null, fn ($q, $areaId) => $q->where('area_id', $areaId))
-            ->with(['ports.odcs:id,olt_port_id,code'])
+            ->with(['ports.odcs:id,olt_port_id,code', 'area:id,code,name'])
             ->orderBy('code')
             ->get(['id', 'area_id', 'code', 'name']);
 
         return response()->json($olts->map(fn (Olt $olt) => [
             ...$olt->only('id', 'area_id', 'code', 'name'),
+            'area' => $olt->area?->only('id', 'code', 'name'),
             'ports' => $olt->ports->map(fn ($port) => [
                 ...$port->only('id', 'slot', 'port', 'status'),
                 'odcs' => $port->odcs->map->only('id', 'code')->values(),
