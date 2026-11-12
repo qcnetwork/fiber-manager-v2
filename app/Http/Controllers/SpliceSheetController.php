@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\NetworkLocation;
 use App\Http\Requests\CableRequest;
 use App\Models\Area;
 use App\Models\Cable;
@@ -34,7 +35,7 @@ class SpliceSheetController extends Controller
     private function locationSheet(string $kind, int $id): Response
     {
         // Resolving through the area scope guards access.
-        $location = Relation::getMorphedModel($kind)::findOrFail($id);
+        $location = NetworkLocation::findOrFail($kind, $id);
 
         $splices = CoreSplice::where('location_type', $kind)->where('location_id', $id)->with(['coreA', 'coreB'])->get();
         // At an ODP or ODC, cores ending on a splitter input or output port are rows too.

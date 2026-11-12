@@ -108,6 +108,14 @@ class User extends Authenticatable
     }
 
     /**
+     * The only super admin left: deleting or demoting them would leave nobody to manage users and areas.
+     */
+    public function isLastSuperAdmin(): bool
+    {
+        return $this->isSuperAdmin() && ! static::where('role', Role::SuperAdmin)->whereKeyNot($this->getKey())->exists();
+    }
+
+    /**
      * Sales accounts only check coverage and never see customer data.
      */
     public function isSales(): bool

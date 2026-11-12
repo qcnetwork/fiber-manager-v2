@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\NetworkLocation;
 use App\Enums\CoreStatus;
 use App\Models\ActivityLog;
 use App\Models\Cable;
@@ -31,7 +32,7 @@ class CoreTerminationController extends Controller
             'location_id' => ['required', 'integer'],
         ]);
         /** @var Odp|Odc $location Resolving through the area scope guards access. */
-        $location = Relation::getMorphedModel($where['location_type'])::findOrFail($where['location_id']);
+        $location = NetworkLocation::findOrFail($where['location_type'], $where['location_id']);
 
         $data = $request->validate([
             'core_id' => ['required', 'integer'],
@@ -83,7 +84,7 @@ class CoreTerminationController extends Controller
     public function destroy(Request $request, CoreTermination $termination): RedirectResponse
     {
         abort_unless($request->user()->canEditNetwork(), 403);
-        $location = Relation::getMorphedModel($termination->location_type)::findOrFail($termination->location_id); // area scope guards access
+        $location = NetworkLocation::findOrFail($termination->location_type, $termination->location_id); // area scope guards access
         $summary = $this->summary($termination->core, $termination->kind, $termination->port);
 
         $termination->delete();

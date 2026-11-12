@@ -19,9 +19,12 @@ class Photo extends Model
 
     protected $hidden = ['path', 'thumb_path'];
 
+    /** Private disk: photos are served only to logged-in users who may see their owner. */
+    public const DISK = 'photos';
+
     protected static function booted(): void
     {
-        static::deleted(fn (Photo $photo) => Storage::disk('public')->delete([$photo->path, $photo->thumb_path]));
+        static::deleted(fn (Photo $photo) => Storage::disk(self::DISK)->delete([$photo->path, $photo->thumb_path]));
     }
 
     public function photoable(): MorphTo
@@ -59,11 +62,11 @@ class Photo extends Model
 
     protected function url(): Attribute
     {
-        return Attribute::get(fn () => asset('storage/'.$this->path));
+        return Attribute::get(fn () => route('photos.file', $this));
     }
 
     protected function thumbUrl(): Attribute
     {
-        return Attribute::get(fn () => asset('storage/'.$this->thumb_path));
+        return Attribute::get(fn () => route('photos.file', [$this, 'thumb' => 1]));
     }
 }

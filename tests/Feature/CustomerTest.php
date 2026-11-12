@@ -151,7 +151,7 @@ class CustomerTest extends TestCase
 
     public function test_photos_can_be_added_to_a_customer()
     {
-        Storage::fake('public');
+        Storage::fake('photos');
 
         $this->actingAs($this->user())
             ->post('/photos', [

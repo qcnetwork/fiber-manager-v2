@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\NetworkLocation;
 use App\Http\Requests\CableRequest;
 use App\Models\Area;
 use App\Models\Cable;
@@ -56,7 +57,7 @@ class CableController extends Controller
             'id' => ['nullable', 'integer'],
         ]);
 
-        $asset = isset($data['kind'], $data['id']) ? Relation::getMorphedModel($data['kind'])::find($data['id']) : null;
+        $asset = isset($data['kind'], $data['id']) ? NetworkLocation::find($data['kind'], $data['id']) : null;
 
         $cables = Cable::nearby((float) $data['lat'], (float) $data['lng'], config('odp.cable_connect_radius'))
             ->each(fn (array $hit) => $hit['cable']->loadMissing('area:id,code,name'))
@@ -117,7 +118,7 @@ class CableController extends Controller
         $data = $request->validated();
         $path = array_map(fn (array $point) => [(float) $point[0], (float) $point[1]], $data['path']);
         $last = count($path) - 1;
-        $locate = fn (string $type, int $id) => Relation::getMorphedModel($type)::findOrFail($id);
+        $locate = fn (string $type, int $id) => NetworkLocation::findOrFail($type, $id);
 
         foreach (['from' => 0, 'to' => $last] as $end => $index) {
             $data["{$end}_type"] ??= null;

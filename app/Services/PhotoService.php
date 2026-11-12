@@ -23,8 +23,16 @@ class PhotoService
 
     public const THUMB_SIDE = 400;
 
+    /** Largest image decoded, in pixels: a tiny PNG can claim huge dimensions and exhaust memory when decoded. */
+    public const MAX_PIXELS = 40_000_000;
+
     public function store(Model $owner, UploadedFile $file, ?string $caption, ?User $user): Photo
     {
+        $dimensions = @getimagesize($file->getRealPath());
+        if ($dimensions && $dimensions[0] * $dimensions[1] > self::MAX_PIXELS) {
+            throw ValidationException::withMessages(['photo' => 'Resolusi gambar terlalu besar (maksimal 40 megapiksel).']);
+        }
+
         $image = @imagecreatefromstring((string) file_get_contents($file->getRealPath()));
         if (! $image instanceof GdImage) {
             throw ValidationException::withMessages(['photo' => 'File gambar tidak bisa dibaca. Gunakan JPG, PNG, atau WebP.']);
@@ -77,7 +85,7 @@ class PhotoService
         imagejpeg($image, null, $quality);
         $data = (string) ob_get_clean();
 
-        Storage::disk('public')->put($path, $data);
+        Storage::disk(Photo::DISK)->put($path, $data);
 
         return strlen($data);
     }

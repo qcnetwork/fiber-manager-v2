@@ -38,6 +38,15 @@ return [
             'report' => false,
         ],
 
+        // Asset and customer photos: not web-served, only through the logged-in photos.file route.
+        'photos' => [
+            'driver' => 'local',
+            'root' => storage_path('app/photos'),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

@@ -24,7 +24,7 @@ class PhotoTest extends TestCase
     {
         parent::setUp();
 
-        Storage::fake('public');
+        Storage::fake('photos');
         $this->area = Area::factory()->create();
         $this->odp = Odp::factory()->for($this->area)->create();
     }
@@ -51,9 +51,9 @@ class PhotoTest extends TestCase
         $photo = $this->odp->photos()->sole();
         $this->assertSame([1600, 1200], [$photo->width, $photo->height]);
         $this->assertSame('Tampak depan', $photo->caption);
-        Storage::disk('public')->assertExists([$photo->path, $photo->thumb_path]);
+        Storage::disk('photos')->assertExists([$photo->path, $photo->thumb_path]);
 
-        [$thumbW] = getimagesizefromstring(Storage::disk('public')->get($photo->thumb_path));
+        [$thumbW] = getimagesizefromstring(Storage::disk('photos')->get($photo->thumb_path));
         $this->assertSame(400, $thumbW);
 
         $this->getJson("/odps/{$this->odp->id}")->assertJsonPath('odp.photos.0.caption', 'Tampak depan');
@@ -66,6 +66,46 @@ class PhotoTest extends TestCase
             ->assertSessionHasErrors('photo');
 
         $this->assertSame(0, Photo::count());
+    }
+
+    public function test_photo_files_are_only_served_to_users_who_may_see_them()
+    {
+        $this->actingAs($this->user())->upload()->assertSessionHasNoErrors();
+        $photo = Photo::sole();
+
+        // Not under the web-served /storage folder.
+        $this->assertStringNotContainsString('/storage/', $photo->url);
+        Storage::disk('public')->assertMissing($photo->path);
+
+        $this->actingAs($this->user(Role::Viewer));
+        $this->get($photo->url)->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+        $this->get($photo->thumb_url)->assertOk();
+
+        $outsider = User::factory()->create(['area_id' => Area::factory()->create()->id, 'role' => Role::Teknisi]);
+        $this->actingAs($outsider)->get($photo->url)->assertNotFound();
+        $this->actingAs(User::factory()->create(['area_id' => null, 'role' => Role::Sales]))->get($photo->url)->assertRedirect('/coverage');
+
+        auth()->logout();
+        $this->get($photo->url)->assertRedirect('/login');
+    }
+
+    public function test_old_public_photos_are_moved_to_private_storage()
+    {
+        Storage::fake('public');
+        $photo = $this->odp->photos()->create(['path' => 'photos/odp/1/a.jpg', 'thumb_path' => 'photos/odp/1/a_thumb.jpg', 'width' => 4, 'height' => 3, 'size' => 4]);
+        Storage::disk('public')->put($photo->path, 'full');
+        Storage::disk('public')->put($photo->thumb_path, 'thumb');
+
+        $this->artisan('foto:pindah-privat --dry-run')->assertSuccessful();
+        Storage::disk('public')->assertExists($photo->path);
+
+        $this->artisan('foto:pindah-privat')->expectsOutputToContain('Dipindahkan: 2 file')->assertSuccessful();
+        $this->assertSame('full', Storage::disk('photos')->get($photo->path));
+        $this->assertSame('thumb', Storage::disk('photos')->get($photo->thumb_path));
+        Storage::disk('public')->assertMissing([$photo->path, $photo->thumb_path, 'photos']);
+
+        // Running again changes nothing.
+        $this->artisan('foto:pindah-privat')->expectsOutputToContain('Dipindahkan: 0 file')->assertSuccessful();
     }
 
     public function test_viewer_cannot_upload_and_other_areas_are_hidden()
@@ -86,7 +126,7 @@ class PhotoTest extends TestCase
 
         $this->actingAs($uploader)->delete("/photos/{$photo->id}")->assertRedirect();
         $this->assertModelMissing($photo);
-        Storage::disk('public')->assertMissing([$photo->path, $photo->thumb_path]);
+        Storage::disk('photos')->assertMissing([$photo->path, $photo->thumb_path]);
     }
 
     public function test_deleting_the_odp_removes_its_photos()
@@ -97,6 +137,6 @@ class PhotoTest extends TestCase
         $this->delete("/odps/{$this->odp->id}")->assertRedirect();
 
         $this->assertSame(0, Photo::count());
-        Storage::disk('public')->assertMissing($photo->path);
+        Storage::disk('photos')->assertMissing($photo->path);
     }
 }

@@ -32,7 +32,7 @@ class MigrateFiberManagerPhotosTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
-        Storage::fake('public');
+        Storage::fake('photos');
 
         $area = Area::factory()->create();
         $this->odc = Odc::factory()->for($area)->create();

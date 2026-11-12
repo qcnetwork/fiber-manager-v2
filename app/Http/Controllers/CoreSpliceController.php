@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\NetworkLocation;
 use App\Enums\CoreStatus;
 use App\Http\Requests\CableRequest;
 use App\Models\ActivityLog;
@@ -154,7 +155,7 @@ class CoreSpliceController extends Controller
     {
         abort_unless($request->user()->canEditNetwork(), 403);
         // Resolving the location through its area scope guards access.
-        $location = Relation::getMorphedModel($splice->location_type)::findOrFail($splice->location_id);
+        $location = NetworkLocation::findOrFail($splice->location_type, $splice->location_id);
         $splice->load(['coreA', 'coreB']);
         $cores = collect([$splice->coreA->id => $splice->coreA, $splice->coreB->id => $splice->coreB]);
         $summary = $this->pairsSummary([['a' => $splice->core_a_id, 'b' => $splice->core_b_id]], $cores);
@@ -252,7 +253,7 @@ class CoreSpliceController extends Controller
             'location_id' => ['required', 'integer'],
         ]);
 
-        return Relation::getMorphedModel($data['location_type'])::findOrFail($data['location_id']);
+        return NetworkLocation::findOrFail($data['location_type'], $data['location_id']);
     }
 
     /**

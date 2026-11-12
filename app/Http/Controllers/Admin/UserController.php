@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,6 +38,10 @@ class UserController extends Controller
     public function update(Request $request, User $user): RedirectResponse
     {
         $data = $this->validated($request, $user);
+
+        if ($data['role'] !== Role::SuperAdmin->value && $user->isLastSuperAdmin()) {
+            throw ValidationException::withMessages(['role' => 'Pengguna ini satu-satunya super admin. Jadikan pengguna lain super admin terlebih dahulu.']);
+        }
 
         if (blank($data['password'] ?? null)) {
             unset($data['password']);
