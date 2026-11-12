@@ -8,7 +8,7 @@ import { formatLength } from '@/lib/cables';
 import { geocode, precisionWarning, resolveLocation, type GeocodeResult, type LocationPrecision } from '@/lib/coordinates';
 import { currentPosition, getJson } from '@/lib/http';
 import type { Area, BreadcrumbItem, CableLine, OdcMarker, OdpMarker, SharedData } from '@/types';
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 import {
     ChevronDown,
     ChevronUp,
@@ -24,11 +24,12 @@ import {
     Minimize,
     PanelLeftClose,
     PanelLeftOpen,
+    Pencil,
     Search,
     TriangleAlert,
 } from '@lucide/vue';
 import { useFullscreen } from '@vueuse/core';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 interface CoverageOdp {
     id: number;
@@ -40,11 +41,17 @@ interface CoverageOdp {
     used_ports: number;
     free_ports: number;
     status: string;
+    /** Set when `distance` follows the roads. */
+    straight_distance: number | null;
+    /** Road path [lat, lng] to the highlighted ODP. */
+    route: [number, number][] | null;
 }
 
 interface CoverageResult {
     status: 'tercover' | 'penuh' | 'tidak_tercover';
     radius: number;
+    /** 'jalan': distances follow the roads; 'lurus': straight lines (routing off or unavailable). */
+    distance_mode: 'jalan' | 'lurus';
     available: CoverageOdp[];
     full: CoverageOdp[];
     planned: CoverageOdp[];
@@ -53,8 +60,49 @@ interface CoverageResult {
 
 const props = defineProps<{
     radius: number;
+    radiusLimits: [number, number];
+    routingAvailable: boolean;
+    canEditRadius: boolean;
     areas: Area[];
 }>();
+
+// ---- Road distances on/off: off is faster (no wait for the routing server). Remembered per browser.
+const ROAD_KEY = 'odp-coverage-road';
+function initialRoad(): boolean {
+    try {
+        return localStorage.getItem(ROAD_KEY) !== '0';
+    } catch {
+        return true;
+    }
+}
+const roadOn = ref(initialRoad());
+watch(roadOn, (on) => {
+    try {
+        localStorage.setItem(ROAD_KEY, on ? '1' : '0');
+    } catch {
+        // storage unavailable
+    }
+    recheck();
+});
+
+// ---- Super admin: change the coverage radius for everyone
+const editingRadius = ref(false);
+const radiusForm = useForm({ radius: props.radius });
+function editRadius() {
+    radiusForm.radius = props.radius;
+    radiusForm.clearErrors();
+    editingRadius.value = true;
+}
+function saveRadius() {
+    radiusForm.put(route('admin.coverage-radius.update'), {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            editingRadius.value = false;
+            recheck();
+        },
+    });
+}
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Cek Coverage', href: '/coverage' }];
 const mapRef = ref<InstanceType<typeof NetworkMap>>();
@@ -118,13 +166,19 @@ async function check(lat: number, lng: number, from: LocationPrecision = 'exact'
     checking.value = true;
     error.value = '';
     try {
-        result.value = await getJson<CoverageResult>(route('coverage.check'), { lat, lng });
+        const road = props.routingAvailable && roadOn.value ? 1 : 0;
+        result.value = await getJson<CoverageResult>(route('coverage.check'), { lat, lng, road });
         mapRef.value?.showRadius(lat, lng, props.radius);
     } catch (e) {
         error.value = (e as Error).message;
     } finally {
         checking.value = false;
     }
+}
+
+// Checks the same point again after a setting changed.
+function recheck() {
+    if (point.value) check(point.value.lat, point.value.lng, precision.value);
 }
 
 const mapOverlay = computed(() => {
@@ -183,32 +237,36 @@ function onMapClick(lat: number, lng: number) {
 }
 
 // ---- Result presentation
+// Distances follow the roads unless the routing server was unavailable.
+const byRoad = computed(() => result.value?.distance_mode === 'jalan');
+const via = computed(() => (byRoad.value ? ' lewat jalan' : ''));
+
 const verdict = computed(() => {
     const r = result.value;
     if (!r) return null;
     return {
         tercover: {
             title: 'Tercover',
-            text: `Ada ODP dengan port kosong dalam jarak ${r.radius} m.`,
+            text: `Ada ODP dengan port kosong dalam jarak ${r.radius} m${via.value}.`,
             icon: CircleCheck,
             tone: 'border-green-600 bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200',
         },
         penuh: {
             title: 'ODP penuh',
-            text: `Ada ODP dalam ${r.radius} m, tetapi semua port-nya terpakai. Ajukan penambahan kapasitas ke tim teknis.`,
+            text: `Ada ODP dalam ${r.radius} m${via.value}, tetapi semua port-nya terpakai. Ajukan penambahan kapasitas ke tim teknis.`,
             icon: CircleAlert,
             tone: 'border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100',
         },
         tidak_tercover: {
             title: 'Belum tercover',
-            text: `Tidak ada ODP aktif dengan port kosong dalam ${r.radius} m.`,
+            text: `Tidak ada ODP aktif dengan port kosong dalam ${r.radius} m${via.value}.`,
             icon: CircleX,
             tone: 'border-red-600 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200',
         },
     }[r.status];
 });
 
-// Straight-line distance close to the limit may not hold once the drop follows poles.
+// A distance close to the limit may not hold once the drop follows the poles.
 const nearLimit = computed(() => {
     const best = result.value?.available[0];
     return best && best.distance > result.value!.radius * 0.8;
@@ -226,7 +284,7 @@ async function copyResult() {
         `Cek coverage ${new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`,
         `Lokasi: ${point.value.lat.toFixed(6)}, ${point.value.lng.toFixed(6)}${precision.value === 'exact' ? '' : ' (dari link Google Maps, perlu dicek)'}`,
         mapsUrl.value,
-        `Hasil: ${verdict.value.title.toUpperCase()} (batas ${r.radius} m)`,
+        `Hasil: ${verdict.value.title.toUpperCase()} (batas ${r.radius} m, jarak ${byRoad.value ? 'lewat jalan' : 'garis lurus'})`,
         best ? `ODP: ${best.code} — ${best.distance} m, ${best.free_ports} port kosong` : null,
         !best && r.full[0] ? `ODP terdekat (penuh): ${r.full[0].code} — ${r.full[0].distance} m` : null,
         !best && r.nearest_outside
@@ -265,7 +323,40 @@ async function copyResult() {
                     <div class="mb-3 flex items-start justify-between gap-2 max-md:mb-2">
                         <div>
                             <h1 class="text-lg font-semibold max-md:hidden">Cek coverage calon pelanggan</h1>
-                            <p class="text-sm text-muted-foreground max-md:text-xs">Batas jarak ODP ke pelanggan: {{ radius }} m.</p>
+                            <form v-if="editingRadius" class="mt-1 flex flex-wrap items-center gap-1.5 text-sm" @submit.prevent="saveRadius">
+                                <label for="coverage-radius" class="text-muted-foreground">Batas jarak</label>
+                                <Input
+                                    id="coverage-radius"
+                                    v-model.number="radiusForm.radius"
+                                    type="number"
+                                    :min="radiusLimits[0]"
+                                    :max="radiusLimits[1]"
+                                    step="10"
+                                    class="h-8 w-24"
+                                />
+                                <span class="text-muted-foreground">m</span>
+                                <Button type="submit" size="sm" class="h-8" :disabled="radiusForm.processing">Simpan</Button>
+                                <Button type="button" variant="ghost" size="sm" class="h-8" @click="editingRadius = false">Batal</Button>
+                                <p v-if="radiusForm.errors.radius" class="w-full text-xs text-red-600">{{ radiusForm.errors.radius }}</p>
+                            </form>
+                            <p v-else class="flex items-center gap-1 text-sm text-muted-foreground max-md:text-xs">
+                                Batas jarak ODP ke pelanggan: {{ radius }} m.
+                                <button
+                                    v-if="canEditRadius"
+                                    type="button"
+                                    class="rounded p-1 hover:bg-muted hover:text-foreground"
+                                    title="Ubah batas jarak (berlaku untuk semua pengguna)"
+                                    @click="editRadius"
+                                >
+                                    <Pencil class="size-3.5" />
+                                    <span class="sr-only">Ubah batas jarak</span>
+                                </button>
+                            </p>
+                            <label v-if="routingAvailable" class="mt-1.5 flex w-fit cursor-pointer items-center gap-2 text-sm max-md:text-xs">
+                                <input v-model="roadOn" type="checkbox" class="size-4 accent-primary" />
+                                <span>Hitung jarak lewat jalan</span>
+                                <span class="text-xs text-muted-foreground">{{ roadOn ? '(lebih akurat)' : '(garis lurus, lebih cepat)' }}</span>
+                            </label>
                         </div>
                         <div class="flex shrink-0 gap-1">
                             <Button
@@ -421,7 +512,15 @@ async function copyResult() {
                                 ><ExternalLink class="size-4" /> Google Maps</Button
                             >
                         </div>
-                        <p class="text-xs text-muted-foreground">Jarak dihitung garis lurus dari titik lokasi ke ODP.</p>
+                        <p v-if="byRoad" class="text-xs text-muted-foreground">
+                            Jarak dihitung lewat jalan (perkiraan, jalur kabel bisa berbeda). Data jalan © OpenStreetMap contributors, rute oleh
+                            OSRM/FOSSGIS.
+                        </p>
+                        <p v-else class="text-xs text-muted-foreground">
+                            Jarak dihitung garis lurus dari titik lokasi ke ODP{{
+                                routingAvailable && roadOn ? ' (server rute jalan sedang tidak tersedia)' : ''
+                            }}.
+                        </p>
                     </div>
                 </section>
 

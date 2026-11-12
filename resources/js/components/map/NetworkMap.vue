@@ -29,7 +29,7 @@ const props = defineProps<{
     /** Per draft vertex: whether it is attached to a POP/ODC/ODP. */
     draftLinks?: boolean[];
     pick: { lat: number; lng: number } | null;
-    nearest: { lat: number; lng: number; radius: number; results: { lat: number; lng: number }[] } | null;
+    nearest: { lat: number; lng: number; radius: number; results: { lat: number; lng: number; route?: [number, number][] | null }[] } | null;
     center: [number, number];
     zoom: number;
     /** Start with the cable layer unticked; it can still be switched on from the layer menu. */
@@ -366,14 +366,20 @@ function renderNearest() {
     L.circle([n.lat, n.lng], { radius: n.radius, color: '#e11d48', weight: 1, fillOpacity: 0.06, interactive: false }).addTo(nearestLayer);
     L.marker([n.lat, n.lng], { icon: pickIcon, interactive: false }).addTo(nearestLayer);
 
+    // The road path when there is one, else a straight line.
     n.results.forEach((odp, i) => {
-        L.polyline(
-            [
-                [n.lat, n.lng],
-                [odp.lat, odp.lng],
-            ],
-            { color: i === 0 ? '#e11d48' : '#fb7185', weight: i === 0 ? 3 : 1.5, dashArray: i === 0 ? undefined : '3 5', interactive: false },
-        ).addTo(nearestLayer);
+        const path: L.LatLngExpression[] = odp.route?.length
+            ? odp.route
+            : [
+                  [n.lat, n.lng],
+                  [odp.lat, odp.lng],
+              ];
+        L.polyline(path, {
+            color: i === 0 ? '#e11d48' : '#fb7185',
+            weight: i === 0 ? 4 : 1.5,
+            dashArray: i === 0 ? undefined : '3 5',
+            interactive: false,
+        }).addTo(nearestLayer);
     });
 }
 
