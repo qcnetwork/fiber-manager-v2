@@ -81,7 +81,8 @@ class MapController extends Controller
             ->get(['id', 'type', 'code', 'name', 'lat', 'lng', 'status']);
 
         // A cable is in view when its bounding box overlaps the viewport.
-        $cables = Cable::query()
+        // Sales accounts never get cable routes.
+        $cables = $request->user()->isSales() ? collect() : Cable::query()
             ->where('min_lat', '<=', $north)->where('max_lat', '>=', $south)
             ->where('min_lng', '<=', $east)->where('max_lng', '>=', $west)
             // With an area picked: its own cables, plus cables of other areas reaching one of its assets.

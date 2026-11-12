@@ -459,7 +459,9 @@ onMounted(() => {
         .filter((layer) => !(props.hideCables && layer === cableLayer))
         .forEach((layer) => layer.addTo(map));
 
-    const overlays: Record<string, L.Layer> = { Kabel: cableLayer, ODC: odcLayer, ODP: odpLayer, 'Garis bantu': linkLayer };
+    const overlays: Record<string, L.Layer> = props.hideCables
+        ? { ODC: odcLayer, ODP: odpLayer, 'Garis bantu': linkLayer }
+        : { Kabel: cableLayer, ODC: odcLayer, ODP: odpLayer, 'Garis bantu': linkLayer };
     if (props.pops) {
         popLayer.addTo(map);
         overlays.POP = popLayer;
