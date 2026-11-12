@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\PortStatus;
 use App\Enums\Role;
 use App\Models\Area;
+use App\Models\Cable;
 use App\Models\Odp;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -104,7 +105,12 @@ class CoverageTest extends TestCase
         $this->getJson("/odps/{$odp->id}")->assertForbidden(); // would include customers
         $this->get('/data/export/xlsx')->assertRedirect('/coverage');
         $this->post('/odps', [])->assertForbidden();
-        $this->getJson('/map/features?bbox=106,-7,107,-6')->assertOk();
+        // No cable routes: not on the map, not in search, not their endpoints.
+        $cable = Cable::create(['area_id' => $this->area->id, 'code' => 'KBL-SALES', 'type' => 'feeder', 'cores' => 12, 'path' => [[-6.2, 106.8], [-6.2, 106.802]]]);
+        $this->assertSame([], $this->getJson('/map/features?bbox=106,-7,107,-6')->assertOk()->json('cables'));
+        $this->assertSame([], $this->getJson('/map/search?q=KBL-SALES')->assertOk()->json('cables') ?? []);
+        $this->getJson("/cables/{$cable->id}")->assertForbidden();
+        $this->getJson('/cables/nearby?lat=-6.2&lng=106.801')->assertForbidden();
     }
 
     public function test_staff_can_use_coverage_too_and_their_area_still_applies()

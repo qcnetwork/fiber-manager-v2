@@ -58,7 +58,7 @@ const props = defineProps<{
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Cek Coverage', href: '/coverage' }];
 const mapRef = ref<InstanceType<typeof NetworkMap>>();
-// Sales only needs ODC/ODP to judge coverage; cable routes start hidden.
+// Sales only needs ODC/ODP to judge coverage; they get no cable routes at all.
 const isSales = usePage<SharedData>().props.auth.user.role === 'sales';
 
 // ---- Map: start where the user last looked, else their area
