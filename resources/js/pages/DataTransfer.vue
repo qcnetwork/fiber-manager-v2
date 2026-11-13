@@ -77,7 +77,7 @@ const MAX_SHOWN = 200;
             <Card v-if="can.export">
                 <CardHeader>
                     <CardTitle class="flex items-center gap-2 text-base"><Download class="size-4" /> Ekspor data</CardTitle>
-                    <CardDescription>Unduh semua ODC, ODP, pelanggan, dan jalur kabel.</CardDescription>
+                    <CardDescription>Unduh semua POP, ODC, ODP, joint/roset, pelanggan, jalur kabel, serta core &amp; sambungannya.</CardDescription>
                 </CardHeader>
                 <CardContent class="grid gap-4">
                     <div v-if="can.chooseArea" class="grid gap-1.5">
@@ -94,7 +94,8 @@ const MAX_SHOWN = 200;
                             <span>
                                 <span class="block font-medium">Excel (.xlsx)</span>
                                 <span class="block text-xs text-muted-foreground"
-                                    >Sheet ODC, ODP, Pelanggan, Kabel. Bisa diedit lalu diimpor kembali.</span
+                                    >Sheet ODC, POP/OLT, ODP, Joint/Roset, Pelanggan, Kabel, Core, Sambungan, Terminasi. Sheet ODC &amp; ODP bisa
+                                    diedit lalu diimpor kembali.</span
                                 >
                             </span>
                         </a>

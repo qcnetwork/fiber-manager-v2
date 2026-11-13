@@ -6,10 +6,11 @@ use App\Models\Area;
 use App\Models\Cable;
 use App\Models\Odc;
 use App\Models\Odp;
+use App\Models\SpliceBox;
 use XMLWriter;
 
 /**
- * Writes POPs, ODC, ODP and cables as KML for Google Earth / Google My Maps.
+ * Writes POPs, ODC, ODP, joint boxes/rosettes and cables as KML for Google Earth / Google My Maps.
  *
  * Each placemark carries its fields as ExtendedData (tipe, kapasitas, ...), which KmlReader reads back,
  * so a KML export can also be re-imported.
@@ -74,6 +75,15 @@ class KmlExporter
         $xml->endElement();
 
         $xml->startElement('Folder');
+        $xml->writeElement('name', 'Joint-Roset');
+        $inArea(SpliceBox::query())->with('area:id,code')->orderBy('code')->lazy()->each(fn (SpliceBox $box) => $this->point($xml, $box->code, 'joint', $box->lat, $box->lng, [
+            'tipe' => 'joint', 'jenis' => $box->type->label(), 'nama' => $box->name, 'area' => $box->area?->code, 'alamat' => $box->address,
+            'no_tiang' => $box->pole_number, 'kapasitas' => $box->capacity, 'status' => $box->status->value,
+            'tanggal_pasang' => $box->installed_at?->format('Y-m-d'), 'catatan' => $box->notes,
+        ]));
+        $xml->endElement();
+
+        $xml->startElement('Folder');
         $xml->writeElement('name', 'Kabel');
         $inArea(Cable::query())->with(['from:id,code', 'to:id,code'])->orderBy('type')->orderBy('code')->lazy()->each(fn (Cable $cable) => $this->line($xml, $cable));
         $xml->endElement();
@@ -89,7 +99,7 @@ class KmlExporter
         $icons = [
             'pop' => 'red-stars', 'odc-aktif' => 'blu-square', 'odc-rencana' => 'wht-square', 'odc-rusak' => 'purple-square',
             'odp-hijau' => 'grn-circle', 'odp-kuning' => 'ylw-circle', 'odp-merah' => 'red-circle',
-            'odp-rencana' => 'wht-circle', 'odp-rusak' => 'purple-circle',
+            'odp-rencana' => 'wht-circle', 'odp-rusak' => 'purple-circle', 'joint' => 'ylw-diamond',
         ];
         foreach ($icons as $id => $icon) {
             $xml->startElement('Style');

@@ -41,8 +41,8 @@ class KmlReader
             $folders = $this->folderNames($placemark);
             $label = 'KML "'.($name !== '' ? $name : 'tanpa nama').'"';
 
-            // POPs in our own export are for viewing only; they are managed in the app.
-            if (mb_strtolower($extended['tipe'] ?? '') === 'pop') {
+            // POPs and joints in our own export are for viewing only; they are managed in the app.
+            if (in_array(mb_strtolower($extended['tipe'] ?? ''), ['pop', 'joint'], true)) {
                 continue;
             }
 
