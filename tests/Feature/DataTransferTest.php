@@ -6,8 +6,12 @@ use App\Enums\PortStatus;
 use App\Enums\Role;
 use App\Models\Area;
 use App\Models\Cable;
+use App\Models\CoreSplice;
+use App\Models\CoreTermination;
+use App\Models\Customer;
 use App\Models\Odc;
 use App\Models\Odp;
+use App\Models\SpliceBox;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -210,6 +214,63 @@ class DataTransferTest extends TestCase
         $this->get('/data/export/kml')->assertForbidden();
         $this->get('/data/export/xlsx')->assertForbidden();
         $this->get('/data/template')->assertOk();
+    }
+
+    public function test_excel_export_has_joints_cores_splices_and_terminations()
+    {
+        $odp = Odp::factory()->for($this->area)->create(['code' => 'ODP-T']);
+        $box = SpliceBox::factory()->for($this->area)->create(['code' => 'JB-T', 'type' => 'roset']);
+        $a = Cable::create(['area_id' => $this->area->id, 'code' => 'KBL-A', 'type' => 'distribusi', 'cores' => 24, 'tube_size' => 12, 'path' => [[-6.9, 107.6], [-6.91, 107.6]]]);
+        $b = Cable::create(['area_id' => $this->area->id, 'code' => 'KBL-B', 'type' => 'distribusi', 'cores' => 12, 'path' => [[-6.91, 107.6], [-6.92, 107.6]]]);
+        $a14 = $a->coreRows()->where('number', 14)->sole();
+        $b1 = $b->coreRows()->where('number', 1)->sole();
+        CoreSplice::create(['location_type' => 'joint', 'location_id' => $box->id, 'core_a_id' => $a14->id, 'core_a_side' => 'to', 'core_b_id' => $b1->id, 'core_b_side' => 'from']);
+        CoreTermination::create(['core_id' => $b1->id, 'side' => 'to', 'location_type' => 'odp', 'location_id' => $odp->id, 'kind' => 'input', 'port' => 1]);
+        Customer::create(['area_id' => $this->area->id, 'name' => 'Tanpa Port', 'lat' => -6.9, 'lng' => 107.6]);
+
+        // Nothing from another area.
+        $other = Area::factory()->create();
+        $lain = Cable::create(['code' => 'KBL-LAIN', 'type' => 'feeder', 'cores' => 12, 'path' => [[-6.0, 107.0], [-6.1, 107.0]]]);
+        Cable::withoutGlobalScopes()->whereKey($lain->id)->update(['area_id' => $other->id]);
+
+        $sheets = $this->readExport();
+
+        $this->assertSame(['ODC', 'POP-OLT', 'POP', 'ODP', 'Joint-Roset', 'Pelanggan', 'Kabel', 'Core', 'Sambungan', 'Terminasi'], array_keys($sheets));
+        $this->assertSame(['JB-T', 'Roset'], array_slice($sheets['Joint-Roset'][1], 0, 2));
+        $this->assertSame($this->area->code, $sheets['POP'][1][0]);
+        $this->assertSame('Tanpa Port', $sheets['Pelanggan'][1][3]);
+        $this->assertSame(['KBL-A', 'KBL-B'], array_column(array_slice($sheets['Kabel'], 1), 1));
+
+        $cores = collect(array_slice($sheets['Core'], 1));
+        $this->assertCount(36, $cores);
+        $core14 = $cores->first(fn ($r) => $r[0] === 'KBL-A' && $r[1] === 14);
+        $this->assertSame([2, 'Oranye', 'Oranye'], array_slice($core14, 2, 3));
+        $this->assertSame('Sambung ke KBL-B core 1 di JB-T', $core14[6]);
+        $this->assertStringContainsString('Input splitter 1 ODP-T', $cores->first(fn ($r) => $r[0] === 'KBL-B' && $r[1] === 1)[6]);
+
+        $this->assertSame(['JB-T', 'Joint/Roset', 'KBL-A', 14, 'to', 'KBL-B', 1, 'from'], array_slice($sheets['Sambungan'][1], 0, 8));
+        $this->assertSame(['ODP-T', 'ODP', 'input splitter', 1, 'KBL-B', 1, 'to'], array_slice($sheets['Terminasi'][1], 0, 7));
+    }
+
+    /**
+     * @return array<string, list<list<mixed>>>
+     */
+    private function readExport(): array
+    {
+        $file = tempnam(sys_get_temp_dir(), 'xlsx');
+        file_put_contents($file, $this->get('/data/export/xlsx')->assertOk()->streamedContent());
+        $reader = new \OpenSpout\Reader\XLSX\Reader;
+        $reader->open($file);
+        $sheets = [];
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $sheets[$sheet->getName()][] = $row->toArray();
+            }
+        }
+        $reader->close();
+        unlink($file);
+
+        return $sheets;
     }
 
     public function test_exported_text_never_becomes_an_excel_formula()
