@@ -49,9 +49,10 @@ import type {
     Olt,
     Pop,
     PopMarker,
+    SharedData,
     SpliceBox,
 } from '@/types';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     Box,
     ChevronDown,
@@ -69,7 +70,7 @@ import {
     Spline,
 } from '@lucide/vue';
 import { useDebounceFn, useFullscreen } from '@vueuse/core';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
     areas: Area[];
@@ -78,6 +79,9 @@ const props = defineProps<{
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Peta Jaringan', href: '/map' }];
+
+const page = usePage<SharedData>();
+const approvalCount = computed(() => (page.props.auth.canApprove ? page.props.approvals?.pending : page.props.approvals?.decided_unseen) ?? 0);
 
 const mapRef = ref<InstanceType<typeof NetworkMap>>();
 
@@ -261,6 +265,7 @@ function startCustomerEdit() {
 }
 
 function afterCustomerChange() {
+    endApprovalEdit();
     const c = customerDetail.value;
     pick.value = null;
     loadFeatures(); // port usage of the ODPs changed
@@ -343,6 +348,7 @@ function startEdit() {
 }
 
 function onFormSaved() {
+    endApprovalEdit();
     const editing = formAsset.value ? { kind: formKind.value, id: formAsset.value.id } : null;
     pick.value = null;
     loadFeatures();
@@ -351,6 +357,7 @@ function onFormSaved() {
 }
 
 function onFormCancel() {
+    endApprovalEdit();
     const editing = formAsset.value ? { kind: formKind.value, id: formAsset.value.id } : null;
     pick.value = null;
     if (editing) select(editing.kind, editing.id);
@@ -392,6 +399,7 @@ function refreshSelected() {
 const activePort = ref<OdpPort | null>(null);
 const activeCore = ref<CableCore | null>(null);
 function onPortSaved() {
+    endApprovalEdit();
     activePort.value = null;
     if (selected.value) select(selected.value.kind, selected.value.id);
     loadFeatures();
@@ -558,6 +566,7 @@ function clearCable() {
 }
 
 function onCableSaved() {
+    endApprovalEdit();
     const editing = editingCable.value;
     draft.value = null;
     loadFeatures();
@@ -566,11 +575,110 @@ function onCableSaved() {
 }
 
 function onCableCancel() {
+    endApprovalEdit();
     const editing = editingCable.value;
     draft.value = null;
     if (editing) select('cable', editing.id);
     else closePanel();
 }
+
+// ---- Opened from the approval page: show an item or a spot, or edit a technician's request before approving it
+interface ApprovalRequest {
+    id: number;
+    route_name: string;
+    route_params: Record<string, string | number>;
+    payload: Record<string, unknown>;
+    user: string | null;
+    subject_label: string | null;
+    context: { odp_id?: number | null };
+}
+const approvalEdit = ref<ApprovalRequest | null>(null);
+const approvalError = ref('');
+
+function endApprovalEdit() {
+    if (!approvalEdit.value) return;
+    approvalEdit.value = null;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('approval');
+    window.history.replaceState(window.history.state, '', url);
+}
+
+function endpointCode(type: CableEndKind, id: number): string {
+    const markers: { id: number; code: string | null }[] = { pop: pops.value, odc: odcs.value, odp: odps.value, joint: joints.value }[type] ?? [];
+    return markers.find((m) => m.id === id)?.code ?? `#${id}`;
+}
+
+function payloadPoint(payload: Record<string, unknown>): { lat: number; lng: number } | null {
+    const lat = Number(payload.lat);
+    const lng = Number(payload.lng);
+    return payload.lat !== null && payload.lat !== '' && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+async function openApproval(id: number) {
+    let request: ApprovalRequest;
+    try {
+        request = (await getJson<{ request: ApprovalRequest }>(route('approvals.show', { changeRequest: id }))).request;
+    } catch (e) {
+        approvalError.value = (e as Error).message;
+        return;
+    }
+    // Set first: the forms read the request's values when they open.
+    approvalEdit.value = request;
+    const [resource, action] = request.route_name.split('.');
+    const { payload, route_params: params } = request;
+    const point = payloadPoint(payload);
+
+    if (resource === 'odcs' || resource === 'odps' || resource === 'joints') {
+        const kind = resource.slice(0, -1) as AssetKind;
+        if (action === 'store') startCreate(kind);
+        else {
+            await select(kind, Number(params[kind]));
+            startEdit();
+        }
+        if (point) {
+            pick.value = point;
+            mapRef.value?.flyTo(point.lat, point.lng);
+        }
+    } else if (resource === 'cables') {
+        if (action === 'update') await select('cable', Number(params.cable));
+        startCable(action === 'update' ? cableDetail.value : null);
+        const path = ((payload.path as [number, number][] | undefined) ?? []).map(([lat, lng]) => [Number(lat), Number(lng)] as LatLng);
+        const links: (CableEndpoint | null)[] = path.map(() => null);
+        const link = (type: unknown, linkId: unknown): CableEndpoint | null =>
+            type && linkId ? { type: type as CableEndKind, id: Number(linkId), code: endpointCode(type as CableEndKind, Number(linkId)) } : null;
+        if (path.length) links[0] = link(payload.from_type, payload.from_id);
+        if (path.length > 1) links[path.length - 1] = link(payload.to_type, payload.to_id);
+        for (const stop of (payload.stops as { vertex: number; type: string; id: number }[] | undefined) ?? []) {
+            if (stop.vertex > 0 && stop.vertex < path.length - 1) links[stop.vertex] = link(stop.type, stop.id);
+        }
+        draft.value = path;
+        draftLinks.value = links;
+        const middle = path[Math.floor(path.length / 2)];
+        if (middle) mapRef.value?.flyTo(middle[0], middle[1]);
+    } else if (resource === 'customers') {
+        await select('customer', Number(params.customer), true);
+        startCustomerEdit();
+        pick.value = point;
+    } else if (resource === 'ports' && request.context.odp_id) {
+        await select('odp', request.context.odp_id, true);
+        activePort.value = odpDetail.value?.ports?.find((p) => p.id === Number(params.port)) ?? null;
+    }
+}
+
+function closePort() {
+    activePort.value = null;
+    endApprovalEdit();
+}
+
+onMounted(() => {
+    const params = new URLSearchParams(window.location.search);
+    const item = params.get('select')?.match(/^(odc|odp|joint|cable|customer|pop):(\d+)$/);
+    if (item) select(item[1] as MapItemKind, Number(item[2]), true);
+    const at = params.get('at')?.split(',').map(Number);
+    if (at?.length === 2 && at.every(Number.isFinite)) mapRef.value?.flyTo(at[0], at[1], 18);
+    const approval = Number(params.get('approval'));
+    if (approval) openApproval(approval);
+});
 
 function onMapSelect(kind: MapItemKind, id: number) {
     if (mode.value === 'cable') {
@@ -698,6 +806,23 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         v-if="!toolbarHidden"
                         class="absolute top-2 left-2 z-10 size-10 rounded-full border bg-background shadow-sm md:hidden"
                     />
+                    <!-- Something waits on the approval page: a dot on the phone menu button. -->
+                    <span
+                        v-if="!toolbarHidden && approvalCount"
+                        class="pointer-events-none absolute top-2 left-10 z-10 size-3 rounded-full bg-red-600 ring-2 ring-background md:hidden"
+                    />
+
+                    <!-- Approver editing a technician's request: saving approves it. -->
+                    <div
+                        v-if="approvalEdit || approvalError"
+                        class="absolute top-14 left-1/2 z-20 flex w-[calc(100%-1rem)] max-w-lg -translate-x-1/2 items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-md md:top-14 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
+                    >
+                        <span v-if="approvalEdit" class="flex-1">
+                            Mengedit request #{{ approvalEdit.id }} dari {{ approvalEdit.user ?? 'teknisi' }}. Simpan untuk menyetujuinya.
+                        </span>
+                        <span v-else class="flex-1">Request tidak bisa dibuka: {{ approvalError }}</span>
+                        <Link :href="route('approvals.index')" class="shrink-0 font-medium underline">Ke Approval</Link>
+                    </div>
 
                     <!-- Toolbar hidden for a clear map: one button brings it back (bottom right on phones, top left on desktop). -->
                     <Button
@@ -933,6 +1058,8 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         v-else-if="mode === 'customer-form' && customerDetail"
                         :key="formKey"
                         :customer="customerDetail"
+                        :initial="approvalEdit?.payload"
+                        :change-request-id="approvalEdit?.id"
                         :location="pick"
                         @locate="locate"
                         @clear-location="pick = null"
@@ -1015,6 +1142,8 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         :areas="areas"
                         :can-choose-area="can.chooseArea"
                         :default-area-id="editingCable?.area_id ?? defaultAreaId"
+                        :initial="approvalEdit?.payload"
+                        :change-request-id="approvalEdit?.id"
                         @undo="undoCablePoint"
                         @clear="clearCable"
                         @saved="onCableSaved"
@@ -1031,6 +1160,8 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         :can-choose-area="can.chooseArea"
                         :default-area-id="formAsset?.area_id ?? defaultAreaId"
                         :default-odc-id="formDefaultOdcId"
+                        :initial="approvalEdit?.payload"
+                        :change-request-id="approvalEdit?.id"
                         @locate="locate"
                         @saved="onFormSaved"
                         @cancel="onFormCancel"
@@ -1053,7 +1184,14 @@ watch([mode, selected], () => (sheetExpanded.value = false));
             </div>
         </div>
 
-        <PortDialog :port="activePort" :odp-code="odpDetail?.code ?? ''" @saved="onPortSaved" @close="activePort = null" />
+        <PortDialog
+            :port="activePort"
+            :odp-code="odpDetail?.code ?? ''"
+            :initial="approvalEdit?.payload"
+            :change-request-id="approvalEdit?.id"
+            @saved="onPortSaved"
+            @close="closePort"
+        />
         <CoreDialog
             v-if="cableDetail"
             :cable="cableDetail"

@@ -132,6 +132,22 @@ class User extends Authenticatable
     }
 
     /**
+     * Technicians' changes wait for approval instead of being saved straight away.
+     */
+    public function needsApproval(): bool
+    {
+        return $this->role === Role::Teknisi;
+    }
+
+    /**
+     * Super admins approve requests from every area, area admins those of their own area.
+     */
+    public function canApprove(): bool
+    {
+        return in_array($this->role, [Role::SuperAdmin, Role::AdminArea], true);
+    }
+
+    /**
      * Whether the user may delete network data.
      */
     public function canDeleteNetwork(): bool

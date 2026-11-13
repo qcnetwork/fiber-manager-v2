@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useApproval } from '@/composables/useApproval';
 import InputError from '@/components/InputError.vue';
 import NativeSelect from '@/components/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
@@ -251,6 +252,7 @@ function removeTermination(id: number) {
         },
     });
 }
+const { saveLabel, needsApproval } = useApproval();
 </script>
 
 <template>
@@ -339,7 +341,7 @@ function removeTermination(id: number) {
                 <InputError :message="error" />
                 <div class="flex gap-2">
                     <Button size="sm" :disabled="saving || !pairs.length" @click="save">
-                        <LoaderCircle v-if="saving" class="size-4 animate-spin" /> Simpan sambungan
+                        <LoaderCircle v-if="saving" class="size-4 animate-spin" /> {{ needsApproval ? 'Kirim request' : 'Simpan sambungan' }}
                     </Button>
                     <Button size="sm" variant="outline" @click="adding = false">Batal</Button>
                 </div>
@@ -449,7 +451,7 @@ function removeTermination(id: number) {
                     <InputError :message="termError" />
                     <div class="flex gap-2">
                         <Button size="sm" :disabled="saving || !termForm.core || !termForm.target" @click="saveTermination">
-                            <LoaderCircle v-if="saving" class="size-4 animate-spin" /> Simpan
+                            <LoaderCircle v-if="saving" class="size-4 animate-spin" /> {{ saveLabel }}
                         </Button>
                         <Button size="sm" variant="outline" @click="terminating = false">Batal</Button>
                     </div>

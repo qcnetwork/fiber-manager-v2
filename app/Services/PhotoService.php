@@ -28,10 +28,7 @@ class PhotoService
 
     public function store(Model $owner, UploadedFile $file, ?string $caption, ?User $user): Photo
     {
-        $dimensions = @getimagesize($file->getRealPath());
-        if ($dimensions && $dimensions[0] * $dimensions[1] > self::MAX_PIXELS) {
-            throw ValidationException::withMessages(['photo' => 'Resolusi gambar terlalu besar (maksimal 40 megapiksel).']);
-        }
+        $this->checkDimensions($file);
 
         $image = @imagecreatefromstring((string) file_get_contents($file->getRealPath()));
         if (! $image instanceof GdImage) {
@@ -58,6 +55,17 @@ class PhotoService
             'height' => imagesy($full),
             'size' => $size,
         ]);
+    }
+
+    /**
+     * Refuses images whose claimed size would exhaust memory when decoded; reads only the header.
+     */
+    public function checkDimensions(UploadedFile $file): void
+    {
+        $dimensions = @getimagesize($file->getRealPath());
+        if ($dimensions && $dimensions[0] * $dimensions[1] > self::MAX_PIXELS) {
+            throw ValidationException::withMessages(['photo' => 'Resolusi gambar terlalu besar (maksimal 40 megapiksel).']);
+        }
     }
 
     /**

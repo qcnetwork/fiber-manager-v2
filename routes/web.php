@@ -3,6 +3,7 @@
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Admin\AreaController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\CableController;
 use App\Http\Controllers\CableCoreController;
 use App\Http\Controllers\CoreSpliceController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\SpliceBoxController;
 use App\Http\Controllers\SpliceSheetController;
 use App\Http\Middleware\EnsureNotSales;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\HoldForApproval;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/map')->name('home');
@@ -49,32 +51,32 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::put('olts/{olt}', [OltController::class, 'update'])->name('olts.update');
     Route::delete('olts/{olt}', [OltController::class, 'destroy'])->name('olts.destroy');
     Route::patch('olt-ports/{port}', [OltPortController::class, 'update'])->name('olt-ports.update');
-    Route::post('olt-ports/{port}/odcs', [OltPortController::class, 'connect'])->name('olt-ports.connect');
-    Route::delete('olt-ports/{port}/odcs/{odc}', [OltPortController::class, 'disconnect'])->name('olt-ports.disconnect');
+    Route::post('olt-ports/{port}/odcs', [OltPortController::class, 'connect'])->middleware(HoldForApproval::class)->name('olt-ports.connect');
+    Route::delete('olt-ports/{port}/odcs/{odc}', [OltPortController::class, 'disconnect'])->middleware(HoldForApproval::class)->name('olt-ports.disconnect');
 
     Route::get('odcs/options', [OdcController::class, 'options'])->name('odcs.options');
-    Route::apiResource('odcs', OdcController::class)->except('index');
-    Route::apiResource('odps', OdpController::class)->except('index');
-    Route::apiResource('joints', SpliceBoxController::class)->except('index');
-    Route::patch('ports/{port}', [OdpPortController::class, 'update'])->name('ports.update');
+    Route::apiResource('odcs', OdcController::class)->except('index')->middlewareFor(['store', 'update', 'destroy'], HoldForApproval::class);
+    Route::apiResource('odps', OdpController::class)->except('index')->middlewareFor(['store', 'update', 'destroy'], HoldForApproval::class);
+    Route::apiResource('joints', SpliceBoxController::class)->except('index')->middlewareFor(['store', 'update', 'destroy'], HoldForApproval::class);
+    Route::patch('ports/{port}', [OdpPortController::class, 'update'])->middleware(HoldForApproval::class)->name('ports.update');
     Route::get('odps/{odp}/free-ports', [CustomerController::class, 'freePorts'])->name('odps.free-ports');
     Route::get('map/customers', [CustomerController::class, 'markers'])->name('map.customers');
     Route::get('customers/{customer}', [CustomerController::class, 'show'])->name('customers.show');
-    Route::patch('customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
-    Route::post('customers/{customer}/move', [CustomerController::class, 'move'])->name('customers.move');
+    Route::patch('customers/{customer}', [CustomerController::class, 'update'])->middleware(HoldForApproval::class)->name('customers.update');
+    Route::post('customers/{customer}/move', [CustomerController::class, 'move'])->middleware(HoldForApproval::class)->name('customers.move');
     Route::get('cables/nearby', [CableController::class, 'nearby'])->name('cables.nearby');
-    Route::patch('cable-cores/{core}', [CableCoreController::class, 'update'])->name('cable-cores.update');
+    Route::patch('cable-cores/{core}', [CableCoreController::class, 'update'])->middleware(HoldForApproval::class)->name('cable-cores.update');
     Route::get('cable-cores/{core}/trace', [CoreSpliceController::class, 'trace'])->name('cable-cores.trace');
     Route::get('splices', [CoreSpliceController::class, 'index'])->name('splices.index');
-    Route::post('splices', [CoreSpliceController::class, 'store'])->name('splices.store');
-    Route::delete('splices/{splice}', [CoreSpliceController::class, 'destroy'])->name('splices.destroy');
+    Route::post('splices', [CoreSpliceController::class, 'store'])->middleware(HoldForApproval::class)->name('splices.store');
+    Route::delete('splices/{splice}', [CoreSpliceController::class, 'destroy'])->middleware(HoldForApproval::class)->name('splices.destroy');
     Route::get('splice-sheet/{kind}/{id}', [SpliceSheetController::class, 'show'])->whereNumber('id')->name('splice-sheet');
-    Route::post('terminations', [CoreTerminationController::class, 'store'])->name('terminations.store');
-    Route::delete('terminations/{termination}', [CoreTerminationController::class, 'destroy'])->name('terminations.destroy');
-    Route::apiResource('cables', CableController::class)->except('index');
-    Route::post('photos', [PhotoController::class, 'store'])->name('photos.store');
+    Route::post('terminations', [CoreTerminationController::class, 'store'])->middleware(HoldForApproval::class)->name('terminations.store');
+    Route::delete('terminations/{termination}', [CoreTerminationController::class, 'destroy'])->middleware(HoldForApproval::class)->name('terminations.destroy');
+    Route::apiResource('cables', CableController::class)->except('index')->middlewareFor(['store', 'update', 'destroy'], HoldForApproval::class);
+    Route::post('photos', [PhotoController::class, 'store'])->middleware(HoldForApproval::class)->name('photos.store');
     Route::get('photos/{photo}/file', [PhotoController::class, 'file'])->name('photos.file');
-    Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->name('photos.destroy');
+    Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->middleware(HoldForApproval::class)->name('photos.destroy');
 
     Route::get('data', [DataTransferController::class, 'index'])->name('data.index');
     Route::get('data/export/{format}', [DataTransferController::class, 'export'])->name('data.export');
@@ -82,6 +84,13 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::post('data/import', [DataTransferController::class, 'import'])->name('data.import');
 
     Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
+
+    Route::get('approvals', [ApprovalController::class, 'index'])->name('approvals.index');
+    Route::get('approvals/{changeRequest}', [ApprovalController::class, 'show'])->name('approvals.show');
+    Route::get('approvals/{changeRequest}/files/{index}', [ApprovalController::class, 'file'])->whereNumber('index')->name('approvals.file');
+    Route::post('approvals/{changeRequest}/approve', [ApprovalController::class, 'approve'])->name('approvals.approve');
+    Route::post('approvals/{changeRequest}/reject', [ApprovalController::class, 'reject'])->name('approvals.reject');
+    Route::post('approvals/{changeRequest}/cancel', [ApprovalController::class, 'cancel'])->name('approvals.cancel');
 
     Route::middleware(EnsureSuperAdmin::class)->prefix('admin')->name('admin.')->group(function () {
         Route::resource('areas', AreaController::class)->only(['index', 'store', 'update', 'destroy']);

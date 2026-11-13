@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useApproval } from '@/composables/useApproval';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -101,6 +102,7 @@ function submit() {
         onSuccess: () => emit('moved'),
     });
 }
+const { needsApproval } = useApproval();
 </script>
 
 <template>
@@ -184,7 +186,7 @@ function submit() {
                 <Button variant="outline" @click="emit('close')">Batal</Button>
                 <Button v-if="chosenOdp" type="submit" form="move-form" :disabled="!form.port_id || form.processing">
                     <LoaderCircle v-if="form.processing" class="size-4 animate-spin" />
-                    Pindahkan
+                    {{ needsApproval ? 'Kirim request' : 'Pindahkan' }}
                 </Button>
             </DialogFooter>
         </DialogContent>

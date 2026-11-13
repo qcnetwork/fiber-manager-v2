@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { applyInitial, useApproval } from '@/composables/useApproval';
 import InputError from '@/components/InputError.vue';
 import NativeSelect from '@/components/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,9 @@ const props = defineProps<{
     canChooseArea: boolean;
     defaultAreaId: number | null;
     defaultOdcId?: number | null;
+    /** Values of a technician's request an approver edits before approving it. */
+    initial?: Record<string, unknown> | null;
+    changeRequestId?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -57,7 +61,9 @@ const form = useForm({
     olt_port_id: odc?.olt_port_id ?? null,
     // Nearby cables to connect the asset to on save
     connect_cables: [] as number[],
+    change_request_id: props.changeRequestId ?? null,
 });
+applyInitial(form, props.initial);
 
 // For the auto-code hint on joints.
 const areaCode = computed(() => props.areas.find((a) => a.id === Number(form.area_id))?.code ?? null);
@@ -197,6 +203,7 @@ function submit() {
     if (isNew) form.post(route(`${resource}.store`), options);
     else form.put(route(`${resource}.update`, { [props.kind]: props.asset!.id }), options);
 }
+const { saveLabel } = useApproval();
 </script>
 
 <template>
@@ -429,7 +436,7 @@ function submit() {
         <div class="flex gap-2">
             <Button type="submit" class="flex-1" :disabled="form.processing">
                 <LoaderCircle v-if="form.processing" class="size-4 animate-spin" />
-                Simpan
+                {{ saveLabel }}
             </Button>
             <Button type="button" variant="outline" @click="emit('cancel')">Batal</Button>
         </div>

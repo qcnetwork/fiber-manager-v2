@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { applyInitial, useApproval } from '@/composables/useApproval';
 import InputError from '@/components/InputError.vue';
 import NativeSelect from '@/components/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,9 @@ import { watch } from 'vue';
 const props = defineProps<{
     port: OdpPort | null;
     odpCode: string;
+    /** Values of a technician's request an approver edits before approving it. */
+    initial?: Record<string, unknown> | null;
+    changeRequestId?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -28,6 +32,7 @@ const form = useForm({
     // In use, but nobody knows by whom yet: no customer record is created.
     customer_unknown: false,
     customer: { ...emptyCustomer },
+    change_request_id: props.changeRequestId ?? null,
 });
 
 watch(
@@ -46,6 +51,10 @@ watch(
             package: port.customer?.package ?? '',
             ont_sn: port.customer?.ont_sn ?? '',
         };
+        if (props.initial) {
+            applyInitial(form, props.initial);
+            form.customer = { ...emptyCustomer, ...((props.initial.customer as object | null) ?? {}) };
+        }
     },
     { immediate: true },
 );
@@ -57,6 +66,7 @@ function submit() {
         onSuccess: () => emit('saved'),
     });
 }
+const { saveLabel } = useApproval();
 </script>
 
 <template>
@@ -144,7 +154,7 @@ function submit() {
                 <Button variant="outline" @click="emit('close')">Batal</Button>
                 <Button type="submit" form="port-form" :disabled="form.processing">
                     <LoaderCircle v-if="form.processing" class="size-4 animate-spin" />
-                    Simpan
+                    {{ saveLabel }}
                 </Button>
             </DialogFooter>
         </DialogContent>

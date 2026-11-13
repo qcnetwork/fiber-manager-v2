@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\ChangeRequest;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -43,9 +44,20 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $user,
                 'isSuperAdmin' => (bool) $user?->isSuperAdmin(),
+                'needsApproval' => (bool) $user?->needsApproval(),
+                'canApprove' => (bool) $user?->canApprove(),
             ],
+            // Badge counts: requests waiting for an approver, decisions a technician hasn't seen yet.
+            'approvals' => fn () => $user ? [
+                'pending' => $user->canApprove() ? ChangeRequest::reviewableBy($user)->pending()->count() : 0,
+                'decided_unseen' => $user->needsApproval()
+                    ? ChangeRequest::where('user_id', $user->id)->where('status', '!=', ChangeRequest::PENDING)->whereNull('seen_at')->count()
+                    : 0,
+            ] : null,
             'flash' => [
                 'importResult' => fn () => $request->session()->get('importResult'),
+                'notice' => fn () => $request->session()->get('notice'),
+                'noticeError' => fn () => $request->session()->get('noticeError'),
             ],
         ]);
     }

@@ -29,7 +29,7 @@ class PhotoTest extends TestCase
         $this->odp = Odp::factory()->for($this->area)->create();
     }
 
-    private function user(Role $role = Role::Teknisi): User
+    private function user(Role $role = Role::AdminArea): User
     {
         return User::factory()->create(['area_id' => $this->area->id, 'role' => $role]);
     }
@@ -122,7 +122,7 @@ class PhotoTest extends TestCase
         $this->actingAs($uploader)->upload();
         $photo = Photo::sole();
 
-        $this->actingAs($this->user())->delete("/photos/{$photo->id}")->assertForbidden();
+        $this->actingAs($this->user(Role::Teknisi))->delete("/photos/{$photo->id}")->assertForbidden();
 
         $this->actingAs($uploader)->delete("/photos/{$photo->id}")->assertRedirect();
         $this->assertModelMissing($photo);

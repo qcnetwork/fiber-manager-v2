@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { applyInitial, useApproval } from '@/composables/useApproval';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,9 @@ const props = defineProps<{
     customer: Customer;
     /** The draggable marker on the map; null while the customer has no location. */
     location: { lat: number; lng: number } | null;
+    /** Values of a technician's request an approver edits before approving it. */
+    initial?: Record<string, unknown> | null;
+    changeRequestId?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -32,7 +36,9 @@ const form = useForm({
     ont_sn: props.customer.ont_sn ?? '',
     lat: props.location?.lat.toFixed(7) ?? '',
     lng: props.location?.lng.toFixed(7) ?? '',
+    change_request_id: props.changeRequestId ?? null,
 });
+applyInitial(form, props.initial);
 
 // The map marker is the source of truth for the location; typed coordinates move it back.
 watch(
@@ -100,6 +106,7 @@ function submit() {
         { preserveScroll: true, preserveState: true, onSuccess: () => emit('saved') },
     );
 }
+const { saveLabel } = useApproval();
 </script>
 
 <template>
@@ -182,7 +189,7 @@ function submit() {
         <div class="flex gap-2">
             <Button type="submit" :disabled="form.processing">
                 <LoaderCircle v-if="form.processing" class="size-4 animate-spin" />
-                Simpan
+                {{ saveLabel }}
             </Button>
             <Button type="button" variant="outline" @click="emit('cancel')">Batal</Button>
         </div>

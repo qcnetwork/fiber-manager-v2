@@ -13,6 +13,7 @@ export const activityTypes: Record<string, string> = {
     customer: 'Pelanggan',
     cable: 'Kabel',
     photo: 'Foto',
+    cable_core: 'Core kabel',
     user: 'Pengguna',
     import: 'Impor file',
 };
@@ -24,3 +25,75 @@ export const activityActions: Record<ActivityAction, { label: string; class: str
     moved: { label: 'Pindah', class: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' },
     imported: { label: 'Impor', class: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300' },
 };
+
+/** Readable names of the logged columns. */
+export const activityFields: Record<string, string> = {
+    code: 'Kode',
+    name: 'Nama',
+    lat: 'Latitude',
+    lng: 'Longitude',
+    center_lat: 'Latitude',
+    center_lng: 'Longitude',
+    address: 'Alamat',
+    pole_number: 'No. tiang',
+    capacity: 'Kapasitas',
+    splitter_ratio: 'Splitter',
+    status: 'Status',
+    installed_at: 'Tanggal pasang',
+    notes: 'Catatan',
+    area_id: 'Area',
+    odc_id: 'ODC',
+    odc_port: 'Port ODC',
+    odp_id: 'ODP',
+    olt_id: 'OLT',
+    olt_port_id: 'Port OLT',
+    customer_id: 'Pelanggan',
+    customer_code: 'Kode pelanggan',
+    phone: 'Telepon',
+    package: 'Paket',
+    ont_sn: 'SN ONT',
+    type: 'Jenis',
+    sambungan: 'Sambungan',
+    tube_size: 'Core per tube',
+    cores: 'Core',
+    path: 'Jalur',
+    length_m: 'Panjang (m)',
+    from_type: 'Dari (jenis)',
+    from_id: 'Dari (id)',
+    to_type: 'Ke (jenis)',
+    to_id: 'Ke (id)',
+    caption: 'Keterangan',
+    username: 'Username',
+    email: 'Email',
+    role: 'Role',
+    password: 'Password',
+    brand: 'Merek',
+    ip_address: 'IP',
+    pon_ports: 'Jumlah PON',
+    slot: 'Slot',
+    port: 'Port',
+    number: 'Nomor',
+    odc: 'ODC',
+    odp: 'ODP',
+    cable: 'Kabel',
+    skipped: 'Dilewati',
+    request: 'Approval',
+};
+
+export type ActivityChange = [unknown, unknown];
+
+const show = (value: unknown) => (value === null || value === undefined || value === '' ? '–' : String(value));
+
+/** One readable line per changed field. */
+export function changeLines(action: string, changes: Record<string, ActivityChange> | null): { field: string; text: string }[] {
+    return Object.entries(changes ?? {}).map(([key, [before, after]]) => {
+        const field = activityFields[key] ?? key;
+        if (action === 'deleted') return { field, text: show(before) };
+        // New values only: imports, created records, the approval note.
+        if (action === 'imported' || key === 'request' || (action === 'created' && before === null && after !== null))
+            return { field, text: show(after) };
+        // Masked columns (password, cable route) are stored without values.
+        if (before === null && after === null) return { field, text: 'diubah' };
+        return { field, text: `${show(before)} → ${show(after)}` };
+    });
+}

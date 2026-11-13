@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { applyInitial, useApproval } from '@/composables/useApproval';
 import InputError from '@/components/InputError.vue';
 import NativeSelect from '@/components/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,9 @@ const props = defineProps<{
     areas: Area[];
     canChooseArea: boolean;
     defaultAreaId: number | null;
+    /** Values of a technician's request an approver edits before approving it. */
+    initial?: Record<string, unknown> | null;
+    changeRequestId?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -40,7 +44,9 @@ const form = useForm({
     tube_size: props.cable?.tube_size ?? 12,
     status: props.cable?.status ?? 'aktif',
     notes: props.cable?.notes ?? '',
+    change_request_id: props.changeRequestId ?? null,
 });
+applyInitial(form, props.initial);
 
 // Suggest the usual core count when the type changes on a new cable.
 watch(
@@ -88,6 +94,7 @@ const endError = computed(
         errors.value.to_type ||
         Object.entries(errors.value).find(([key]) => key.startsWith('stops'))?.[1],
 );
+const { needsApproval } = useApproval();
 </script>
 
 <template>
@@ -198,7 +205,7 @@ const endError = computed(
         <div class="flex gap-2">
             <Button type="submit" class="flex-1" :disabled="form.processing || path.length < 2">
                 <LoaderCircle v-if="form.processing" class="size-4 animate-spin" />
-                Simpan kabel
+                {{ needsApproval ? 'Kirim request' : 'Simpan kabel' }}
             </Button>
             <Button type="button" variant="outline" @click="emit('cancel')">Batal</Button>
         </div>

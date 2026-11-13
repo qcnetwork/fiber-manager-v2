@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useApproval } from '@/composables/useApproval';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -78,6 +79,7 @@ function submit() {
         onSuccess: () => emit('saved'),
     });
 }
+const { saveLabel } = useApproval();
 </script>
 
 <template>
@@ -193,7 +195,7 @@ function submit() {
                     <Button type="button" variant="outline" @click="emit('close')">Batal</Button>
                     <Button type="submit" :disabled="form.processing">
                         <LoaderCircle v-if="form.processing" class="size-4 animate-spin" />
-                        Simpan
+                        {{ saveLabel }}
                     </Button>
                 </DialogFooter>
             </form>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalBell from '@/components/ApprovalBell.vue';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItemType } from '@/types';
@@ -36,6 +37,9 @@ withDefaults(
                     </BreadcrumbList>
                 </Breadcrumb>
             </template>
+        </div>
+        <div class="ml-auto">
+            <ApprovalBell />
         </div>
     </header>
 </template>
