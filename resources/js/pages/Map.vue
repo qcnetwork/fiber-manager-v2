@@ -6,6 +6,8 @@ import CablePanel from '@/components/map/CablePanel.vue';
 import CoreDialog from '@/components/map/CoreDialog.vue';
 import CustomerForm from '@/components/map/CustomerForm.vue';
 import CustomerPanel from '@/components/map/CustomerPanel.vue';
+import DraftBar from '@/components/map/DraftBar.vue';
+import DraftPanel from '@/components/map/DraftPanel.vue';
 import JointPanel from '@/components/map/JointPanel.vue';
 import MoveCustomerDialog from '@/components/map/MoveCustomerDialog.vue';
 import NearestPanel from '@/components/map/NearestPanel.vue';
@@ -20,6 +22,7 @@ import PortDialog from '@/components/map/PortDialog.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { PHOTO_DRAFTS } from '@/composables/useApproval';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { isUrl, parseCoordinates, precisionWarning, resolveLocation } from '@/lib/coordinates';
 import { currentPosition, getJson } from '@/lib/http';
@@ -27,14 +30,17 @@ import { cableTypes } from '@/lib/leaflet';
 import type {
     Area,
     AssetKind,
+    AssetStatus,
     BreadcrumbItem,
     Cable,
     CableCore,
     CableEndKind,
     CableEndpoint,
     CableLine,
+    CableType,
     Customer,
     CustomerMarker,
+    DraftItem,
     JointDetail,
     JointMarker,
     LatLng,
@@ -43,6 +49,7 @@ import type {
     Odc,
     OdcDetail,
     OdcMarker,
+    OdcOption,
     Odp,
     OdpMarker,
     OdpPort,
@@ -51,6 +58,8 @@ import type {
     PopMarker,
     SharedData,
     SpliceBox,
+    SpliceBoxType,
+    StoredChange,
 } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
@@ -70,7 +79,7 @@ import {
     Spline,
 } from '@lucide/vue';
 import { useDebounceFn, useFullscreen } from '@vueuse/core';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, provide, ref, watch } from 'vue';
 
 const props = defineProps<{
     areas: Area[];
@@ -171,7 +180,7 @@ function onBounds(bbox: string, center: [number, number], newZoom: number) {
 }
 
 // ---- Side panel state
-type Mode = 'idle' | 'detail' | 'form' | 'nearest' | 'cable' | 'customer-form' | 'pop-form';
+type Mode = 'idle' | 'detail' | 'form' | 'nearest' | 'cable' | 'customer-form' | 'pop-form' | 'draft';
 const mode = ref<Mode>('idle');
 const selected = ref<{ kind: MapItemKind; id: number } | null>(null);
 const popDetail = ref<Pop | null>(null);
@@ -192,6 +201,13 @@ function clearDetails() {
 }
 
 async function select(kind: MapItemKind, id: number, fly = false) {
+    // Assets that only exist as drafts (negative id) open their draft panel.
+    if (id < 0) {
+        clearDetails();
+        selected.value = { kind, id };
+        mode.value = 'draft';
+        return;
+    }
     // Reloading the same item (after a change) keeps the panel content until the new data arrives.
     const same = selected.value?.kind === kind && selected.value.id === id;
     mode.value = 'detail';
@@ -265,7 +281,7 @@ function startCustomerEdit() {
 }
 
 function afterCustomerChange() {
-    endApprovalEdit();
+    endStoredEdit();
     const c = customerDetail.value;
     pick.value = null;
     loadFeatures(); // port usage of the ODPs changed
@@ -348,7 +364,7 @@ function startEdit() {
 }
 
 function onFormSaved() {
-    endApprovalEdit();
+    endStoredEdit();
     const editing = formAsset.value ? { kind: formKind.value, id: formAsset.value.id } : null;
     pick.value = null;
     loadFeatures();
@@ -357,7 +373,7 @@ function onFormSaved() {
 }
 
 function onFormCancel() {
-    endApprovalEdit();
+    endStoredEdit();
     const editing = formAsset.value ? { kind: formKind.value, id: formAsset.value.id } : null;
     pick.value = null;
     if (editing) select(editing.kind, editing.id);
@@ -399,7 +415,7 @@ function refreshSelected() {
 const activePort = ref<OdpPort | null>(null);
 const activeCore = ref<CableCore | null>(null);
 function onPortSaved() {
-    endApprovalEdit();
+    endStoredEdit();
     activePort.value = null;
     if (selected.value) select(selected.value.kind, selected.value.id);
     loadFeatures();
@@ -506,7 +522,7 @@ function addCablePoint(lat: number, lng: number) {
 function linkTarget(kind: CableEndKind, id: number): { lat: number; lng: number; link: CableEndpoint } | null {
     const pop = kind === 'pop' ? pops.value.find((o) => o.id === id) : undefined;
     const markers: { id: number; lat: number; lng: number; code: string }[] =
-        kind === 'odc' ? odcs.value : kind === 'joint' ? joints.value : odps.value;
+        kind === 'odc' ? mapOdcs.value : kind === 'joint' ? mapJoints.value : mapOdps.value;
     const asset = pop ?? markers.find((o) => o.id === id);
     return asset ? { lat: asset.lat, lng: asset.lng, link: { type: kind, id, code: pop ? pop.name : asset.code } } : null;
 }
@@ -566,7 +582,7 @@ function clearCable() {
 }
 
 function onCableSaved() {
-    endApprovalEdit();
+    endStoredEdit();
     const editing = editingCable.value;
     draft.value = null;
     loadFeatures();
@@ -575,36 +591,179 @@ function onCableSaved() {
 }
 
 function onCableCancel() {
-    endApprovalEdit();
+    endStoredEdit();
     const editing = editingCable.value;
     draft.value = null;
     if (editing) select('cable', editing.id);
     else closePanel();
 }
 
-// ---- Opened from the approval page: show an item or a spot, or edit a technician's request before approving it
-interface ApprovalRequest {
-    id: number;
-    route_name: string;
-    route_params: Record<string, string | number>;
-    payload: Record<string, unknown>;
-    user: string | null;
-    subject_label: string | null;
-    context: { odp_id?: number | null };
+// ---- Drafts: a technician's changes not applied yet, shown on the map until approved.
+// An approver looking at a batch (from the approval page) sees its changes the same way.
+const draftItems = ref<DraftItem[]>([]);
+/** The batch an approver is looking at; null shows the technician's own drafts. */
+const overlayBatch = ref<number | null>(null);
+const ownDrafts = computed(() => page.props.auth.needsApproval && overlayBatch.value === null);
+// Photo galleries mark the photos these changes edit or delete.
+provide(
+    PHOTO_DRAFTS,
+    computed(() => new Map(draftItems.value.filter((d) => d.kind === 'photo' && d.subject_id !== null).map((d) => [d.subject_id!, d.action]))),
+);
+
+async function loadDrafts() {
+    if (overlayBatch.value !== null) {
+        draftItems.value = (await getJson<{ items: DraftItem[] }>(route('approvals.overlay', { batch: overlayBatch.value }))).items;
+    } else if (page.props.auth.needsApproval) {
+        draftItems.value = (await getJson<{ items: DraftItem[] }>(route('drafts.index'))).items;
+    }
 }
-const approvalEdit = ref<ApprovalRequest | null>(null);
+// Every save, delete or submit answers with a new flash object: the drafts may have changed.
+watch(
+    () => page.props.flash,
+    () => loadDrafts(),
+);
+
+const num = (value: unknown, fallback = 0) => (value !== null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : fallback);
+const text = (value: unknown) => (value === null || value === undefined ? '' : String(value));
+const placed = (d: DraftItem) => d.lat !== null && d.lng !== null;
+const createdDrafts = (kind: string) => draftItems.value.filter((d) => d.action === 'created' && d.kind === kind);
+
+/** Map markers including assets that only exist as drafts (their id is the draft's token). */
+const mapOdcs = computed<OdcMarker[]>(() => [
+    ...odcs.value,
+    ...createdDrafts('odc')
+        .filter(placed)
+        .map((d) => ({
+            id: d.token,
+            code: text(d.payload.code) || (d.label ?? 'ODC'),
+            name: text(d.payload.name) || null,
+            lat: d.lat!,
+            lng: d.lng!,
+            status: (d.payload.status ?? 'aktif') as AssetStatus,
+            capacity: num(d.payload.capacity),
+            odps_count: 0,
+            pop_latlng: null,
+            draft: true,
+        })),
+]);
+const mapOdps = computed<OdpMarker[]>(() => [
+    ...odps.value,
+    ...createdDrafts('odp')
+        .filter(placed)
+        .map((d) => {
+            const odcId = d.payload.odc_id ? num(d.payload.odc_id) : null;
+            const parent = mapOdcs.value.find((o) => o.id === odcId);
+            const capacity = num(d.payload.capacity);
+            return {
+                id: d.token,
+                odc_id: odcId,
+                code: text(d.payload.code) || (d.label ?? 'ODP'),
+                name: text(d.payload.name) || null,
+                lat: d.lat!,
+                lng: d.lng!,
+                status: (d.payload.status ?? 'aktif') as AssetStatus,
+                capacity,
+                used_ports: 0,
+                free_ports: capacity,
+                odc_latlng: parent ? ([parent.lat, parent.lng] as [number, number]) : null,
+                draft: true,
+            };
+        }),
+]);
+const mapJoints = computed<JointMarker[]>(() => [
+    ...joints.value,
+    ...createdDrafts('joint')
+        .filter(placed)
+        .map((d) => ({
+            id: d.token,
+            type: (d.payload.type ?? 'joint_box') as SpliceBoxType,
+            code: d.label ?? (text(d.payload.code) || 'Joint'),
+            name: text(d.payload.name) || null,
+            lat: d.lat!,
+            lng: d.lng!,
+            status: (d.payload.status ?? 'aktif') as AssetStatus,
+            draft: true,
+        })),
+]);
+const mapCables = computed<CableLine[]>(() => [
+    ...cables.value,
+    ...createdDrafts('cable')
+        .filter((d) => (d.path?.length ?? 0) > 1)
+        .map((d) => ({
+            id: d.token,
+            code: text(d.payload.code) || null,
+            type: (d.payload.type ?? 'distribusi') as CableType,
+            cores: num(d.payload.cores, 12),
+            status: (d.payload.status ?? 'aktif') as AssetStatus,
+            path: d.path!.map(([lat, lng]) => [Number(lat), Number(lng)] as LatLng),
+            length_m: 0,
+            draft: true,
+        })),
+]);
+/** Existing assets a draft changes or removes. */
+const changeMarks = computed(() =>
+    draftItems.value
+        .filter((d) => d.action !== 'created' && ['odc', 'odp', 'joint', 'cable', 'customer'].includes(d.kind) && (placed(d) || d.path?.length))
+        .map((d) => ({ lat: d.lat, lng: d.lng, path: d.path, action: d.action, label: d.label ?? '' })),
+);
+/** Draft ODCs offered as parent in the ODP form, with the ports their draft ODPs already take. */
+const draftOdcOptions = computed<OdcOption[]>(() =>
+    draftOdcs().map((odc) => ({
+        id: odc.id,
+        area_id: num(draftItems.value.find((d) => d.token === odc.id)?.payload.area_id),
+        area: null,
+        code: `${odc.code} (draft)`,
+        name: odc.name,
+        capacity: odc.capacity,
+        used_ports: createdDrafts('odp')
+            .filter((d) => num(d.payload.odc_id) === odc.id && d.payload.odc_port)
+            .map((d) => num(d.payload.odc_port)),
+        distance: null,
+    })),
+);
+function draftOdcs() {
+    return mapOdcs.value.filter((o) => o.draft);
+}
+
+const selectedDraft = computed(() =>
+    mode.value === 'draft' && selected.value ? (draftItems.value.find((d) => d.token === selected.value!.id) ?? null) : null,
+);
+const draftPhotos = computed(() =>
+    selectedDraft.value ? draftItems.value.filter((d) => d.kind === 'photo' && num(d.payload.photoable_id) === selectedDraft.value!.token) : [],
+);
+
+/** Opens a draft from the draft list: where it is, with its panel. */
+function focusDraft(item: DraftItem) {
+    closePanel();
+    selected.value = { kind: (['odc', 'odp', 'joint', 'cable', 'customer'].includes(item.kind) ? item.kind : 'odp') as MapItemKind, id: item.token };
+    mode.value = 'draft';
+    if (placed(item)) mapRef.value?.flyTo(item.lat!, item.lng!);
+    else if (item.path?.length) {
+        const middle = item.path[Math.floor(item.path.length / 2)];
+        mapRef.value?.flyTo(Number(middle[0]), Number(middle[1]));
+    }
+}
+
+function discardDraft(item: DraftItem) {
+    if (!confirm(`Hapus draft ${item.label ?? ''}?`)) return;
+    router.delete(route('drafts.destroy', { changeRequest: item.id }), { preserveScroll: true, preserveState: true, onSuccess: closePanel });
+}
+
+// ---- Changing a stored change in its map form: the technician's own draft, or an approver's edit of a batch item
+const storedEdit = ref<{ change: StoredChange; draftId: number | null; changeRequestId: number | null; user: string | null } | null>(null);
 const approvalError = ref('');
 
-function endApprovalEdit() {
-    if (!approvalEdit.value) return;
-    approvalEdit.value = null;
+function endStoredEdit() {
+    if (!storedEdit.value) return;
+    storedEdit.value = null;
     const url = new URL(window.location.href);
     url.searchParams.delete('approval');
     window.history.replaceState(window.history.state, '', url);
 }
 
 function endpointCode(type: CableEndKind, id: number): string {
-    const markers: { id: number; code: string | null }[] = { pop: pops.value, odc: odcs.value, odp: odps.value, joint: joints.value }[type] ?? [];
+    const markers: { id: number; code: string | null }[] =
+        { pop: pops.value, odc: mapOdcs.value, odp: mapOdps.value, joint: mapJoints.value }[type] ?? [];
     return markers.find((m) => m.id === id)?.code ?? `#${id}`;
 }
 
@@ -614,18 +773,11 @@ function payloadPoint(payload: Record<string, unknown>): { lat: number; lng: num
     return payload.lat !== null && payload.lat !== '' && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 }
 
-async function openApproval(id: number) {
-    let request: ApprovalRequest;
-    try {
-        request = (await getJson<{ request: ApprovalRequest }>(route('approvals.show', { changeRequest: id }))).request;
-    } catch (e) {
-        approvalError.value = (e as Error).message;
-        return;
-    }
-    // Set first: the forms read the request's values when they open.
-    approvalEdit.value = request;
-    const [resource, action] = request.route_name.split('.');
-    const { payload, route_params: params } = request;
+async function openStoredChange(change: StoredChange, how: { draftId?: number; changeRequestId?: number; user?: string | null }) {
+    // Set first: the forms read the change's values when they open.
+    storedEdit.value = { change, draftId: how.draftId ?? null, changeRequestId: how.changeRequestId ?? null, user: how.user ?? null };
+    const [resource, action] = change.route_name.split('.');
+    const { payload, route_params: params } = change;
     const point = payloadPoint(payload);
 
     if (resource === 'odcs' || resource === 'odps' || resource === 'joints') {
@@ -659,25 +811,56 @@ async function openApproval(id: number) {
         await select('customer', Number(params.customer), true);
         startCustomerEdit();
         pick.value = point;
-    } else if (resource === 'ports' && request.context.odp_id) {
-        await select('odp', request.context.odp_id, true);
+    } else if (resource === 'ports' && change.context?.odp_id) {
+        await select('odp', change.context.odp_id, true);
         activePort.value = odpDetail.value?.ports?.find((p) => p.id === Number(params.port)) ?? null;
+    }
+}
+
+function editDraft(item: DraftItem) {
+    openStoredChange({ id: item.id, route_name: item.route_name, route_params: routeParamsOf(item), payload: item.payload }, { draftId: item.id });
+}
+
+/** The route parameters of a draft that edits an existing record. */
+function routeParamsOf(item: DraftItem): Record<string, number> {
+    const resource = item.route_name.split('.')[0];
+    const param = { odcs: 'odc', odps: 'odp', joints: 'joint', cables: 'cable', customers: 'customer' }[resource];
+    return param && item.subject_id ? { [param]: item.subject_id } : {};
+}
+
+async function openApproval(id: number) {
+    try {
+        const data = await getJson<{ request: StoredChange & { batch_id: number; user: string | null }; overlay: DraftItem[] }>(
+            route('approvals.show', { changeRequest: id }),
+        );
+        overlayBatch.value = data.request.batch_id;
+        draftItems.value = data.overlay;
+        await openStoredChange(data.request, { changeRequestId: id, user: data.request.user });
+    } catch (e) {
+        approvalError.value = (e as Error).message;
     }
 }
 
 function closePort() {
     activePort.value = null;
-    endApprovalEdit();
+    endStoredEdit();
 }
 
-onMounted(() => {
+onMounted(async () => {
     const params = new URLSearchParams(window.location.search);
     const item = params.get('select')?.match(/^(odc|odp|joint|cable|customer|pop):(\d+)$/);
     if (item) select(item[1] as MapItemKind, Number(item[2]), true);
     const at = params.get('at')?.split(',').map(Number);
     if (at?.length === 2 && at.every(Number.isFinite)) mapRef.value?.flyTo(at[0], at[1], 18);
+
     const approval = Number(params.get('approval'));
-    if (approval) openApproval(approval);
+    const batch = Number(params.get('batch'));
+    if (approval) return openApproval(approval);
+    if (batch) overlayBatch.value = batch;
+    await loadDrafts();
+    // A batch opened from the approval page: go to its first change.
+    const first = batch ? draftItems.value.find((d) => placed(d) || d.path?.length) : null;
+    if (first) focusDraft(first);
 });
 
 function onMapSelect(kind: MapItemKind, id: number) {
@@ -776,10 +959,11 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                 <div class="relative flex-1">
                     <NetworkMap
                         ref="mapRef"
-                        :odcs="odcs"
-                        :odps="odps"
-                        :joints="joints"
-                        :cables="cables"
+                        :odcs="mapOdcs"
+                        :odps="mapOdps"
+                        :joints="mapJoints"
+                        :cables="mapCables"
+                        :change-marks="changeMarks"
                         :draft="mode === 'cable' ? draft : null"
                         :draft-links="draftLinks.map(Boolean)"
                         :selected="selected"
@@ -812,16 +996,30 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         class="pointer-events-none absolute top-2 left-10 z-10 size-3 rounded-full bg-red-600 ring-2 ring-background md:hidden"
                     />
 
-                    <!-- Approver editing a technician's request: saving approves it. -->
+                    <!-- Approver looking at a batch, or changing one of its items before approving it. -->
                     <div
-                        v-if="approvalEdit || approvalError"
+                        v-if="overlayBatch !== null || approvalError"
                         class="absolute top-14 left-1/2 z-20 flex w-[calc(100%-1rem)] max-w-lg -translate-x-1/2 items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 shadow-md md:top-14 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
+                        :class="panelOpen && 'max-md:hidden'"
                     >
-                        <span v-if="approvalEdit" class="flex-1">
-                            Mengedit request #{{ approvalEdit.id }} dari {{ approvalEdit.user ?? 'teknisi' }}. Simpan untuk menyetujuinya.
+                        <span v-if="approvalError" class="flex-1">Request tidak bisa dibuka: {{ approvalError }}</span>
+                        <span v-else-if="storedEdit?.changeRequestId" class="flex-1">
+                            Mengubah isi request #{{ storedEdit.changeRequestId }} dari {{ storedEdit.user ?? 'teknisi' }}. Simpan, lalu setujui
+                            paketnya.
                         </span>
-                        <span v-else class="flex-1">Request tidak bisa dibuka: {{ approvalError }}</span>
+                        <span v-else class="flex-1"
+                            >Paket #{{ overlayBatch }}: {{ draftItems.length }} perubahan (garis putus-putus / tanda oranye).</span
+                        >
                         <Link :href="route('approvals.index')" class="shrink-0 font-medium underline">Ke Approval</Link>
+                    </div>
+
+                    <!-- Technician: drafts not sent yet. Top on phones (the toolbar is at the bottom), bottom centre on desktop. -->
+                    <div
+                        v-if="ownDrafts && draftItems.length && mode !== 'cable'"
+                        class="pointer-events-none absolute top-14 left-1/2 z-20 w-[calc(100%-1rem)] max-w-sm -translate-x-1/2 md:top-auto md:bottom-8"
+                        :class="panelOpen && 'max-md:hidden'"
+                    >
+                        <DraftBar :items="draftItems" @focus="focusDraft" />
                     </div>
 
                     <!-- Toolbar hidden for a clear map: one button brings it back (bottom right on phones, top left on desktop). -->
@@ -1058,8 +1256,9 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         v-else-if="mode === 'customer-form' && customerDetail"
                         :key="formKey"
                         :customer="customerDetail"
-                        :initial="approvalEdit?.payload"
-                        :change-request-id="approvalEdit?.id"
+                        :initial="storedEdit?.change.payload"
+                        :change-request-id="storedEdit?.changeRequestId"
+                        :draft-id="storedEdit?.draftId"
                         :location="pick"
                         @locate="locate"
                         @clear-location="pick = null"
@@ -1142,8 +1341,9 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         :areas="areas"
                         :can-choose-area="can.chooseArea"
                         :default-area-id="editingCable?.area_id ?? defaultAreaId"
-                        :initial="approvalEdit?.payload"
-                        :change-request-id="approvalEdit?.id"
+                        :initial="storedEdit?.change.payload"
+                        :change-request-id="storedEdit?.changeRequestId"
+                        :draft-id="storedEdit?.draftId"
                         @undo="undoCablePoint"
                         @clear="clearCable"
                         @saved="onCableSaved"
@@ -1160,11 +1360,25 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         :can-choose-area="can.chooseArea"
                         :default-area-id="formAsset?.area_id ?? defaultAreaId"
                         :default-odc-id="formDefaultOdcId"
-                        :initial="approvalEdit?.payload"
-                        :change-request-id="approvalEdit?.id"
+                        :draft-odcs="draftOdcOptions"
+                        :initial="storedEdit?.change.payload"
+                        :change-request-id="storedEdit?.changeRequestId"
+                        :draft-id="storedEdit?.draftId"
                         @locate="locate"
                         @saved="onFormSaved"
                         @cancel="onFormCancel"
+                    />
+
+                    <DraftPanel
+                        v-else-if="mode === 'draft' && selectedDraft"
+                        :key="selectedDraft.id"
+                        :item="selectedDraft"
+                        :photos="draftPhotos"
+                        :own="ownDrafts"
+                        @close="closePanel"
+                        @edit="editDraft(selectedDraft)"
+                        @discard="discardDraft(selectedDraft)"
+                        @changed="loadDrafts"
                     />
 
                     <NearestPanel
@@ -1187,8 +1401,9 @@ watch([mode, selected], () => (sheetExpanded.value = false));
         <PortDialog
             :port="activePort"
             :odp-code="odpDetail?.code ?? ''"
-            :initial="approvalEdit?.payload"
-            :change-request-id="approvalEdit?.id"
+            :initial="storedEdit?.change.payload"
+            :change-request-id="storedEdit?.changeRequestId"
+            :draft-id="storedEdit?.draftId"
             @saved="onPortSaved"
             @close="closePort"
         />

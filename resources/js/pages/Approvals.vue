@@ -18,36 +18,43 @@ interface PreviewEntry {
     changes: Record<string, ActivityChange> | null;
 }
 
-interface ChangeRequest {
+interface Item {
     id: number;
     action: ActivityAction;
     subject_type: string;
     subject_id: number | null;
     subject_label: string | null;
-    status: Status;
     preview: PreviewEntry[] | null;
+    photos: string[];
+    current_photo: string | null;
+    conflict: string | null;
+    editable: boolean;
+}
+
+interface Batch {
+    id: number;
+    status: Status;
+    note: string | null;
     review_note: string | null;
-    created_at: string;
+    submitted_at: string | null;
     reviewed_at: string | null;
     user: { id: number; name: string } | null;
     reviewer: { id: number; name: string } | null;
     area: { id: number; code: string; name: string } | null;
-    photos: string[];
-    conflict: string | null;
-    editable: boolean;
     map: string | null;
+    items: Item[];
 }
 
 const props = defineProps<{
-    requests: {
-        data: ChangeRequest[];
+    batches: {
+        data: Batch[];
         current_page: number;
         last_page: number;
         total: number;
         prev_page_url: string | null;
         next_page_url: string | null;
     };
-    filters: { tab: 'pending' | 'history'; area_id: number | null; type: string | null };
+    filters: { tab: 'pending' | 'history'; area_id: number | null };
     areas: { id: number; code: string; name: string }[];
     canApprove: boolean;
 }>();
@@ -62,44 +69,41 @@ const statuses: Record<Status, { label: string; class: string }> = {
     cancelled: { label: 'Dibatalkan', class: 'bg-muted text-muted-foreground' },
 };
 
-// Kinds of requests technicians can send, for the filter.
-const requestTypes = ['odc', 'odp', 'joint', 'cable', 'odp_port', 'customer', 'splice', 'cable_core', 'photo', 'olt_port'];
-
 // ---- Tabs and filters, kept in the URL
-const filter = reactive({ area_id: props.filters.area_id, type: props.filters.type ?? '' });
+const filter = reactive({ area_id: props.filters.area_id });
 
 function visit(tab: string, page?: number) {
     const query = Object.fromEntries(
-        Object.entries({ tab, area_id: filter.area_id, type: filter.type, page }).filter(([, v]) => v !== '' && v !== null && v !== undefined),
+        Object.entries({ tab, area_id: filter.area_id, page }).filter(([, v]) => v !== '' && v !== null && v !== undefined),
     );
     router.get(route('approvals.index'), query, { preserveScroll: true, replace: true });
 }
 
-// ---- Decisions
+// ---- Decisions on a whole batch
 const busy = ref<number | null>(null);
 const rejecting = ref<number | null>(null);
 const note = ref('');
 
 const done = { preserveScroll: true, onFinish: () => (busy.value = null) };
 
-function approve(cr: ChangeRequest) {
-    busy.value = cr.id;
-    router.post(route('approvals.approve', { changeRequest: cr.id }), {}, done);
+function approve(batch: Batch) {
+    busy.value = batch.id;
+    router.post(route('approvals.approve', { batch: batch.id }), {}, done);
 }
 
-function startReject(cr: ChangeRequest) {
-    rejecting.value = cr.id;
+function startReject(batch: Batch) {
+    rejecting.value = batch.id;
     note.value = '';
 }
 
-function reject(cr: ChangeRequest) {
-    busy.value = cr.id;
-    router.post(route('approvals.reject', { changeRequest: cr.id }), { note: note.value }, { ...done, onSuccess: () => (rejecting.value = null) });
+function reject(batch: Batch) {
+    busy.value = batch.id;
+    router.post(route('approvals.reject', { batch: batch.id }), { note: note.value }, { ...done, onSuccess: () => (rejecting.value = null) });
 }
 
-function cancel(cr: ChangeRequest) {
-    busy.value = cr.id;
-    router.post(route('approvals.cancel', { changeRequest: cr.id }), {}, done);
+function cancel(batch: Batch) {
+    busy.value = batch.id;
+    router.post(route('approvals.cancel', { batch: batch.id }), {}, done);
 }
 
 // ---- Display
@@ -107,17 +111,17 @@ const formatTime = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
 const typeLabel = (type: string) => activityTypes[type] ?? type;
+const conflicts = (batch: Batch) => batch.items.filter((i) => i.conflict).length;
 
-/** The main change, then the records it touches along the way (ports of a new ODP, …). */
-const mainEntry = (cr: ChangeRequest) => cr.preview?.[0] ?? null;
-const relatedEntries = (cr: ChangeRequest) => cr.preview?.slice(1) ?? [];
+/** Items with their changes folded open, by item id. */
+const expanded = ref<Record<number, boolean>>({});
 
 const emptyText = computed(() =>
     props.filters.tab === 'pending'
         ? props.canApprove
-            ? 'Tidak ada request yang menunggu persetujuan.'
-            : 'Tidak ada request yang sedang menunggu.'
-        : 'Belum ada riwayat request.',
+            ? 'Tidak ada paket yang menunggu persetujuan.'
+            : 'Tidak ada paket yang sedang menunggu. Perubahan baru disimpan sebagai draft di peta, lalu dikirim dari bar draft.'
+        : 'Belum ada riwayat.',
 );
 </script>
 
@@ -146,92 +150,104 @@ const emptyText = computed(() =>
                     <option :value="null">Semua area</option>
                     <option v-for="area in areas" :key="area.id" :value="area.id">{{ area.name }}</option>
                 </NativeSelect>
-                <NativeSelect v-model="filter.type" class="w-auto" @change="visit(filters.tab)">
-                    <option value="">Semua jenis</option>
-                    <option v-for="type in requestTypes" :key="type" :value="type">{{ typeLabel(type) }}</option>
-                </NativeSelect>
-                <span class="ml-auto text-sm text-muted-foreground">{{ requests.total }} request</span>
+                <span class="ml-auto text-sm text-muted-foreground">{{ batches.total }} paket</span>
             </div>
 
-            <p v-if="!canApprove && filters.tab === 'pending'" class="text-sm text-muted-foreground">
-                Perubahan yang kamu kirim dari peta menunggu persetujuan admin di sini sebelum tersimpan.
-            </p>
-
-            <Card v-if="!requests.data.length" class="py-0">
+            <Card v-if="!batches.data.length" class="py-0">
                 <CardContent class="p-6 text-center text-sm text-muted-foreground">{{ emptyText }}</CardContent>
             </Card>
 
-            <Card v-for="cr in requests.data" :key="cr.id" class="gap-0 py-0">
+            <Card v-for="batch in batches.data" :key="batch.id" class="gap-0 py-0">
                 <CardContent class="flex flex-col gap-3 p-4">
                     <div class="flex flex-wrap items-center gap-2 text-sm">
-                        <span class="text-xs text-muted-foreground tabular-nums">#{{ cr.id }}</span>
-                        <span class="rounded px-1.5 py-0.5 text-xs font-medium" :class="activityActions[cr.action]?.class">
-                            {{ activityActions[cr.action]?.label ?? cr.action }}
-                        </span>
-                        <span class="text-muted-foreground">{{ typeLabel(cr.subject_type) }}</span>
-                        <span class="font-medium break-all">{{ cr.subject_label }}</span>
-                        <span v-if="cr.area" class="text-xs text-muted-foreground">· {{ cr.area.name }}</span>
-                        <span class="ml-auto rounded px-1.5 py-0.5 text-xs font-medium" :class="statuses[cr.status].class">
-                            {{ statuses[cr.status].label }}
+                        <span class="font-semibold">Paket #{{ batch.id }}</span>
+                        <span class="text-muted-foreground">· {{ batch.items.length }} perubahan</span>
+                        <span v-if="batch.area" class="text-xs text-muted-foreground">· {{ batch.area.name }}</span>
+                        <span v-else class="text-xs text-muted-foreground">· beberapa area</span>
+                        <span class="ml-auto rounded px-1.5 py-0.5 text-xs font-medium" :class="statuses[batch.status].class">
+                            {{ statuses[batch.status].label }}
                         </span>
                     </div>
 
                     <div class="text-xs text-muted-foreground">
-                        Dikirim <span class="font-medium text-foreground">{{ cr.user?.name ?? 'pengguna terhapus' }}</span> ·
-                        {{ formatTime(cr.created_at) }}
-                        <template v-if="cr.status !== 'pending' && cr.reviewed_at">
+                        Dikirim <span class="font-medium text-foreground">{{ batch.user?.name ?? 'pengguna terhapus' }}</span> ·
+                        {{ formatTime(batch.submitted_at) }}
+                        <template v-if="batch.status !== 'pending' && batch.reviewed_at">
                             <br />
-                            {{ statuses[cr.status].label }}
-                            <template v-if="cr.reviewer"
-                                >oleh <span class="font-medium text-foreground">{{ cr.reviewer.name }}</span></template
+                            {{ statuses[batch.status].label }}
+                            <template v-if="batch.reviewer"
+                                >oleh <span class="font-medium text-foreground">{{ batch.reviewer.name }}</span></template
                             >
-                            · {{ formatTime(cr.reviewed_at) }}
+                            · {{ formatTime(batch.reviewed_at) }}
                         </template>
                     </div>
 
-                    <p v-if="cr.review_note" class="rounded-md bg-muted px-3 py-2 text-sm">
-                        <span class="text-muted-foreground">Catatan:</span> {{ cr.review_note }}
+                    <p v-if="batch.note" class="rounded-md bg-muted px-3 py-2 text-sm">
+                        <span class="text-muted-foreground">Catatan teknisi:</span> {{ batch.note }}
                     </p>
-
+                    <p v-if="batch.review_note" class="rounded-md bg-muted px-3 py-2 text-sm">
+                        <span class="text-muted-foreground">Catatan admin:</span> {{ batch.review_note }}
+                    </p>
                     <p
-                        v-if="cr.conflict"
+                        v-if="conflicts(batch)"
                         class="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
                     >
-                        <TriangleAlert class="mt-0.5 size-4 shrink-0" /> {{ cr.conflict }}
+                        <TriangleAlert class="mt-0.5 size-4 shrink-0" /> {{ conflicts(batch) }} perubahan menyentuh data yang sudah diubah orang lain
+                        sejak dibuat.
                     </p>
 
-                    <template v-if="mainEntry(cr)">
-                        <dl
-                            v-if="changeLines(mainEntry(cr)!.action, mainEntry(cr)!.changes).length"
-                            class="grid gap-x-3 rounded-md border px-3 py-2 text-xs sm:grid-cols-[auto_1fr]"
-                        >
-                            <template v-for="line in changeLines(mainEntry(cr)!.action, mainEntry(cr)!.changes)" :key="line.field">
-                                <dt class="text-muted-foreground">{{ line.field }}</dt>
-                                <dd class="mb-0.5 break-all">{{ line.text }}</dd>
-                            </template>
-                        </dl>
-                        <details v-if="relatedEntries(cr).length" class="text-xs">
-                            <summary class="cursor-pointer text-muted-foreground">+ {{ relatedEntries(cr).length }} perubahan terkait</summary>
-                            <ul class="mt-1 flex flex-col gap-1">
-                                <li v-for="(entry, i) in relatedEntries(cr)" :key="i">
-                                    <span class="font-medium"
-                                        >{{ activityActions[entry.action]?.label }} {{ typeLabel(entry.type) }} {{ entry.label }}</span
-                                    >
-                                    <span v-for="line in changeLines(entry.action, entry.changes)" :key="line.field" class="text-muted-foreground">
-                                        · {{ line.field }}: {{ line.text }}
-                                    </span>
-                                </li>
-                            </ul>
-                        </details>
-                    </template>
+                    <ul class="flex flex-col divide-y rounded-md border">
+                        <li v-for="item in batch.items" :key="item.id" class="flex flex-col gap-2 px-3 py-2">
+                            <div class="flex flex-wrap items-center gap-2 text-sm">
+                                <span class="rounded px-1.5 py-0.5 text-xs font-medium" :class="activityActions[item.action]?.class">
+                                    {{ activityActions[item.action]?.label ?? item.action }}
+                                </span>
+                                <span class="text-muted-foreground">{{ typeLabel(item.subject_type) }}</span>
+                                <button
+                                    type="button"
+                                    class="min-w-0 flex-1 truncate text-left font-medium"
+                                    @click="expanded[item.id] = !expanded[item.id]"
+                                >
+                                    {{ item.subject_label }}
+                                </button>
+                                <Button v-if="item.editable" as-child size="sm" variant="ghost" class="h-7 px-2">
+                                    <Link :href="route('map', { approval: item.id })"><Pencil class="size-3.5" /> Edit</Link>
+                                </Button>
+                            </div>
+                            <p v-if="item.conflict" class="flex items-start gap-1.5 text-xs text-amber-800 dark:text-amber-300">
+                                <TriangleAlert class="mt-0.5 size-3.5 shrink-0" /> {{ item.conflict }}
+                            </p>
+                            <dl
+                                v-if="expanded[item.id] && item.preview?.[0] && changeLines(item.preview[0].action, item.preview[0].changes).length"
+                                class="grid grid-cols-[auto_1fr] gap-x-3 text-xs"
+                            >
+                                <template v-for="line in changeLines(item.preview[0].action, item.preview[0].changes)" :key="line.field">
+                                    <dt class="text-muted-foreground">{{ line.field }}</dt>
+                                    <dd class="mb-0.5 break-all">{{ line.text }}</dd>
+                                </template>
+                            </dl>
+                            <div
+                                v-if="item.photos.length || item.current_photo"
+                                class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                            >
+                                <img
+                                    v-if="item.current_photo"
+                                    :src="item.current_photo"
+                                    alt="Foto sekarang"
+                                    class="h-20 w-20 rounded-md border object-cover"
+                                    :class="item.action === 'deleted' && 'opacity-50'"
+                                    loading="lazy"
+                                />
+                                <span v-if="item.current_photo && item.photos.length">→</span>
+                                <a v-for="url in item.photos" :key="url" :href="url" target="_blank" rel="noopener">
+                                    <img :src="url" alt="Foto request" class="h-20 w-20 rounded-md border object-cover" loading="lazy" />
+                                </a>
+                            </div>
+                        </li>
+                    </ul>
+                    <p class="text-xs text-muted-foreground">Klik nama perubahan untuk melihat rinciannya.</p>
 
-                    <div v-if="cr.photos.length" class="flex flex-wrap gap-2">
-                        <a v-for="url in cr.photos" :key="url" :href="url" target="_blank" rel="noopener">
-                            <img :src="url" alt="Foto request" class="h-28 w-28 rounded-md border object-cover" loading="lazy" />
-                        </a>
-                    </div>
-
-                    <div v-if="rejecting === cr.id" class="flex flex-col gap-2">
+                    <div v-if="rejecting === batch.id" class="flex flex-col gap-2">
                         <textarea
                             v-model="note"
                             rows="2"
@@ -240,46 +256,43 @@ const emptyText = computed(() =>
                             class="rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
                         />
                         <div class="flex gap-2">
-                            <Button size="sm" variant="destructive" :disabled="busy === cr.id" @click="reject(cr)"
-                                ><X class="size-4" /> Tolak request</Button
-                            >
+                            <Button size="sm" variant="destructive" :disabled="busy === batch.id" @click="reject(batch)">
+                                <X class="size-4" /> Tolak paket
+                            </Button>
                             <Button size="sm" variant="outline" @click="rejecting = null">Batal</Button>
                         </div>
                     </div>
 
                     <div v-else class="flex flex-wrap gap-2">
-                        <Button v-if="cr.map" as-child size="sm" variant="outline">
-                            <Link :href="cr.map"><MapPin class="size-4" /> Lihat di peta</Link>
+                        <Button v-if="batch.map" as-child size="sm" variant="outline">
+                            <Link :href="batch.map"><MapPin class="size-4" /> Lihat paket di peta</Link>
                         </Button>
-                        <template v-if="canApprove && cr.status === 'pending'">
-                            <Button v-if="cr.editable" as-child size="sm" variant="outline">
-                                <Link :href="route('map', { approval: cr.id })"><Pencil class="size-4" /> Edit di peta</Link>
-                            </Button>
-                            <Button size="sm" variant="outline" :disabled="busy === cr.id" @click="startReject(cr)"
+                        <template v-if="canApprove && batch.status === 'pending'">
+                            <Button size="sm" variant="outline" :disabled="busy === batch.id" @click="startReject(batch)"
                                 ><X class="size-4" /> Tolak</Button
                             >
-                            <Button size="sm" :disabled="busy === cr.id" @click="approve(cr)"><Check class="size-4" /> Setujui</Button>
+                            <Button size="sm" :disabled="busy === batch.id" @click="approve(batch)"><Check class="size-4" /> Setujui semua</Button>
                         </template>
                         <Button
-                            v-if="!canApprove && cr.status === 'pending'"
+                            v-if="!canApprove && batch.status === 'pending'"
                             size="sm"
                             variant="outline"
-                            :disabled="busy === cr.id"
-                            @click="cancel(cr)"
+                            :disabled="busy === batch.id"
+                            @click="cancel(batch)"
                         >
-                            <Undo2 class="size-4" /> Batalkan
+                            <Undo2 class="size-4" /> Batalkan paket
                         </Button>
                     </div>
                 </CardContent>
             </Card>
 
-            <div v-if="requests.last_page > 1" class="flex items-center justify-between text-sm">
-                <span class="text-muted-foreground">Halaman {{ requests.current_page }} dari {{ requests.last_page }}</span>
+            <div v-if="batches.last_page > 1" class="flex items-center justify-between text-sm">
+                <span class="text-muted-foreground">Halaman {{ batches.current_page }} dari {{ batches.last_page }}</span>
                 <div class="flex gap-2">
-                    <Button variant="outline" size="sm" :disabled="!requests.prev_page_url" @click="visit(filters.tab, requests.current_page - 1)">
+                    <Button variant="outline" size="sm" :disabled="!batches.prev_page_url" @click="visit(filters.tab, batches.current_page - 1)">
                         <ChevronLeft class="size-4" /> Sebelumnya
                     </Button>
-                    <Button variant="outline" size="sm" :disabled="!requests.next_page_url" @click="visit(filters.tab, requests.current_page + 1)">
+                    <Button variant="outline" size="sm" :disabled="!batches.next_page_url" @click="visit(filters.tab, batches.current_page + 1)">
                         Berikutnya <ChevronRight class="size-4" />
                     </Button>
                 </div>

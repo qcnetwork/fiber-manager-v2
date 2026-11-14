@@ -40,6 +40,8 @@ const props = defineProps<{
     customerFocus?: { lat: number; lng: number; odp_latlng: [number, number] | null } | null;
     /** POPs in view; only the network map passes them (adds the "POP" layer). */
     pops?: PopMarker[];
+    /** Existing assets a draft changes (orange) or removes (red). */
+    changeMarks?: { lat: number | null; lng: number | null; path: LatLng[] | null; action: string; label: string }[];
     /** Joint boxes and rosettes in view; only the network map passes them (adds the "Joint/Roset" layer). */
     joints?: JointMarker[];
 }>();
@@ -105,6 +107,8 @@ const cableLayer = L.layerGroup();
 // Canvas with a hit tolerance so thin cable lines are easy to tap on a phone.
 const cableRenderer = L.canvas({ tolerance: 8 });
 const draftLayer = L.layerGroup();
+/** Marks on existing assets a technician's draft changes or removes. */
+const changeLayer = L.layerGroup();
 const pickLayer = L.layerGroup();
 const nearestLayer = L.layerGroup();
 // Customers can number in the thousands: drawn on canvas, and the layer starts switched off.
@@ -117,6 +121,26 @@ const isSelected = (kind: MapItemKind, id: number) => props.selected?.kind === k
 
 // Everything typed by people (names, codes) goes through this before it lands in tooltip/popup HTML.
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+
+/** Drafts are drawn faded and labelled until they are approved. */
+const DRAFT_OPACITY = 0.55;
+const draftTag = (item: { draft?: boolean }) => (item.draft ? '<span style="color:#c2410c;font-weight:600">DRAFT</span> · ' : '');
+
+function renderChangeMarks() {
+    changeLayer.clearLayers();
+    for (const mark of props.changeMarks ?? []) {
+        const color = mark.action === 'deleted' ? '#dc2626' : '#ea580c';
+        const tip = `<span style="color:${color};font-weight:600">DRAFT ${mark.action === 'deleted' ? 'hapus' : 'ubah'}</span> · ${escapeHtml(mark.label)}`;
+        if (mark.path?.length) {
+            L.polyline(mark.path, { color, weight: 6, opacity: 0.5, dashArray: '4 8', interactive: false }).addTo(changeLayer);
+        }
+        if (mark.lat !== null && mark.lng !== null) {
+            L.circleMarker([mark.lat, mark.lng], { radius: 16, color, weight: 3, dashArray: '4 4', fill: false, interactive: false })
+                .bindTooltip(tip, { permanent: false, direction: 'top', offset: [0, -16] })
+                .addTo(changeLayer);
+        }
+    }
+}
 
 function renderAssets() {
     popLayer.clearLayers();
@@ -136,8 +160,12 @@ function renderAssets() {
     }
 
     for (const odc of props.odcs) {
-        L.marker([odc.lat, odc.lng], { icon: odcIcon(odc.status, isSelected('odc', odc.id)), zIndexOffset: 1000 })
-            .bindTooltip(`<b>${escapeHtml(odc.code)}</b><br>${odc.odps_count} ODP`, { direction: 'top', offset: [0, -10] })
+        L.marker([odc.lat, odc.lng], {
+            icon: odcIcon(odc.status, isSelected('odc', odc.id)),
+            zIndexOffset: 1000,
+            opacity: odc.draft ? DRAFT_OPACITY : 1,
+        })
+            .bindTooltip(`${draftTag(odc)}<b>${escapeHtml(odc.code)}</b><br>${odc.odps_count} ODP`, { direction: 'top', offset: [0, -10] })
             .on('click', (e) => onAssetClick(e, 'odc', odc.id))
             .addTo(odcLayer);
 
@@ -153,8 +181,11 @@ function renderAssets() {
     }
 
     for (const odp of props.odps) {
-        L.marker([odp.lat, odp.lng], { icon: odpIcon(odp, isSelected('odp', odp.id)) })
-            .bindTooltip(`<b>${escapeHtml(odp.code)}</b><br>Port ${odp.used_ports}/${odp.capacity} terpakai`, { direction: 'top', offset: [0, -8] })
+        L.marker([odp.lat, odp.lng], { icon: odpIcon(odp, isSelected('odp', odp.id)), opacity: odp.draft ? DRAFT_OPACITY : 1 })
+            .bindTooltip(`${draftTag(odp)}<b>${escapeHtml(odp.code)}</b><br>Port ${odp.used_ports}/${odp.capacity} terpakai`, {
+                direction: 'top',
+                offset: [0, -8],
+            })
             .on('click', (e) => onAssetClick(e, 'odp', odp.id))
             .addTo(odpTarget());
 
@@ -171,8 +202,15 @@ function renderAssets() {
 
     jointLayer.clearLayers();
     for (const joint of props.joints ?? []) {
-        L.marker([joint.lat, joint.lng], { icon: jointIcon(joint.type, joint.status, isSelected('joint', joint.id)), zIndexOffset: 500 })
-            .bindTooltip(`<b>${escapeHtml(joint.code)}</b><br>${jointTypes[joint.type]?.label ?? 'Joint'}`, { direction: 'top', offset: [0, -8] })
+        L.marker([joint.lat, joint.lng], {
+            icon: jointIcon(joint.type, joint.status, isSelected('joint', joint.id)),
+            zIndexOffset: 500,
+            opacity: joint.draft ? DRAFT_OPACITY : 1,
+        })
+            .bindTooltip(`${draftTag(joint)}<b>${escapeHtml(joint.code)}</b><br>${jointTypes[joint.type]?.label ?? 'Joint'}`, {
+                direction: 'top',
+                offset: [0, -8],
+            })
             .on('click', (e) => onAssetClick(e, 'joint', joint.id))
             .addTo(jointLayer);
     }
@@ -185,12 +223,13 @@ function renderCables() {
         const selected = isSelected('cable', cable.id);
         const line = L.polyline(cable.path, {
             ...cableStyle(cable, selected),
+            ...(cable.draft ? { dashArray: '10 8', opacity: 0.9 } : {}),
             interactive: !props.draft,
             renderer: cableRenderer,
             bubblingMouseEvents: false,
         })
             .bindTooltip(
-                `<b>${escapeHtml(cable.code ?? 'Kabel ' + cableTypes[cable.type]?.label)}</b><br>${cable.cores} core · ${formatLength(cable.length_m)}`,
+                `${draftTag(cable)}<b>${escapeHtml(cable.code ?? 'Kabel ' + cableTypes[cable.type]?.label)}</b><br>${cable.cores} core · ${formatLength(cable.length_m)}`,
                 { sticky: true },
             )
             .on('click', (e) => onCableClick(e, cable))
@@ -461,7 +500,7 @@ onMounted(() => {
     const layers = baseLayers();
     layers.Peta.addTo(map);
     // The straight ODC–ODP guide lines start hidden now that real cable routes are drawn; they stay available in the layer menu.
-    [cableLayer, odcLayer, odpLayer, customerFocusLayer, draftLayer, pickLayer, nearestLayer]
+    [cableLayer, odcLayer, odpLayer, changeLayer, customerFocusLayer, draftLayer, pickLayer, nearestLayer]
         .filter((layer) => !(props.hideCables && layer === cableLayer))
         .forEach((layer) => layer.addTo(map));
 
@@ -508,6 +547,7 @@ onMounted(() => {
 
     renderAssets();
     renderCables();
+    renderChangeMarks();
     emitBounds();
 });
 
@@ -519,6 +559,7 @@ onBeforeUnmount(() => {
 watch([() => props.pops, () => props.odcs, () => props.odps, () => props.joints, () => props.selected], renderAssets);
 watch([() => props.cables, () => props.selected], renderCables);
 watch([() => props.draft, () => props.draftLinks], renderDraft, { deep: true });
+watch(() => props.changeMarks, renderChangeMarks);
 watch(() => props.pick, renderPick, { deep: true });
 watch(() => props.nearest, renderNearest);
 watch(() => props.customers, renderCustomers);

@@ -7,6 +7,7 @@ use App\Models\User;
 use GdImage;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -28,6 +29,31 @@ class PhotoService
 
     public function store(Model $owner, UploadedFile $file, ?string $caption, ?User $user): Photo
     {
+        return $owner->photos()->create([
+            'user_id' => $user?->id,
+            'caption' => $caption,
+            ...$this->write(sprintf('photos/%s/%d', $owner->getMorphClass(), $owner->getKey()), $file),
+        ]);
+    }
+
+    /**
+     * Puts a new image in place of a photo's (the caller saves it); the old files go once that is committed.
+     */
+    public function replace(Photo $photo, UploadedFile $file): void
+    {
+        $old = [$photo->path, $photo->thumb_path];
+        $photo->fill($this->write(dirname($photo->path), $file));
+
+        DB::afterCommit(fn () => Storage::disk(Photo::DISK)->delete($old));
+    }
+
+    /**
+     * Re-encodes the image and its thumbnail into $dir.
+     *
+     * @return array{path: string, thumb_path: string, width: int, height: int, size: int}
+     */
+    private function write(string $dir, UploadedFile $file): array
+    {
         $this->checkDimensions($file);
 
         $image = @imagecreatefromstring((string) file_get_contents($file->getRealPath()));
@@ -35,7 +61,6 @@ class PhotoService
             throw ValidationException::withMessages(['photo' => 'File gambar tidak bisa dibaca. Gunakan JPG, PNG, atau WebP.']);
         }
 
-        $dir = sprintf('photos/%s/%d', $owner->getMorphClass(), $owner->getKey());
         $name = Str::uuid()->toString();
 
         $full = $this->fit($image, self::MAX_SIDE);
@@ -46,15 +71,7 @@ class PhotoService
         $size = $this->saveJpeg($full, $path, 82);
         $this->saveJpeg($thumb, $thumbPath, 75);
 
-        return $owner->photos()->create([
-            'user_id' => $user?->id,
-            'path' => $path,
-            'thumb_path' => $thumbPath,
-            'caption' => $caption,
-            'width' => imagesx($full),
-            'height' => imagesy($full),
-            'size' => $size,
-        ]);
+        return ['path' => $path, 'thumb_path' => $thumbPath, 'width' => imagesx($full), 'height' => imagesy($full), 'size' => $size];
     }
 
     /**

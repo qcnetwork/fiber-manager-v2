@@ -17,6 +17,8 @@ const props = defineProps<{
     /** Values of a technician's request an approver edits before approving it. */
     initial?: Record<string, unknown> | null;
     changeRequestId?: number | null;
+    /** The technician's own draft being changed. */
+    draftId?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -33,6 +35,7 @@ const form = useForm({
     customer_unknown: false,
     customer: { ...emptyCustomer },
     change_request_id: props.changeRequestId ?? null,
+    draft_id: props.draftId ?? null,
 });
 
 watch(

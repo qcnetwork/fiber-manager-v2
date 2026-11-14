@@ -186,7 +186,7 @@ const { needsApproval } = useApproval();
                 <Button variant="outline" @click="emit('close')">Batal</Button>
                 <Button v-if="chosenOdp" type="submit" form="move-form" :disabled="!form.port_id || form.processing">
                     <LoaderCircle v-if="form.processing" class="size-4 animate-spin" />
-                    {{ needsApproval ? 'Kirim request' : 'Pindahkan' }}
+                    {{ needsApproval ? 'Simpan draft' : 'Pindahkan' }}
                 </Button>
             </DialogFooter>
         </DialogContent>

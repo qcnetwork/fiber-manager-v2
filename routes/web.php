@@ -12,6 +12,7 @@ use App\Http\Controllers\CoverageController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DataTransferController;
+use App\Http\Controllers\DraftController;
 use App\Http\Controllers\MapController;
 use App\Http\Controllers\OdcController;
 use App\Http\Controllers\OdpController;
@@ -76,6 +77,7 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::apiResource('cables', CableController::class)->except('index')->middlewareFor(['store', 'update', 'destroy'], HoldForApproval::class);
     Route::post('photos', [PhotoController::class, 'store'])->middleware(HoldForApproval::class)->name('photos.store');
     Route::get('photos/{photo}/file', [PhotoController::class, 'file'])->name('photos.file');
+    Route::put('photos/{photo}', [PhotoController::class, 'update'])->middleware(HoldForApproval::class)->name('photos.update');
     Route::delete('photos/{photo}', [PhotoController::class, 'destroy'])->middleware(HoldForApproval::class)->name('photos.destroy');
 
     Route::get('data', [DataTransferController::class, 'index'])->name('data.index');
@@ -86,11 +88,17 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::get('activity', [ActivityLogController::class, 'index'])->name('activity.index');
 
     Route::get('approvals', [ApprovalController::class, 'index'])->name('approvals.index');
-    Route::get('approvals/{changeRequest}', [ApprovalController::class, 'show'])->name('approvals.show');
-    Route::get('approvals/{changeRequest}/files/{index}', [ApprovalController::class, 'file'])->whereNumber('index')->name('approvals.file');
-    Route::post('approvals/{changeRequest}/approve', [ApprovalController::class, 'approve'])->name('approvals.approve');
-    Route::post('approvals/{changeRequest}/reject', [ApprovalController::class, 'reject'])->name('approvals.reject');
-    Route::post('approvals/{changeRequest}/cancel', [ApprovalController::class, 'cancel'])->name('approvals.cancel');
+    Route::get('approvals/items/{changeRequest}', [ApprovalController::class, 'show'])->name('approvals.show');
+    Route::get('approvals/items/{changeRequest}/files/{index}', [ApprovalController::class, 'file'])->whereNumber('index')->name('approvals.file');
+    Route::get('approvals/{batch}/overlay', [ApprovalController::class, 'overlay'])->name('approvals.overlay');
+    Route::post('approvals/{batch}/approve', [ApprovalController::class, 'approve'])->name('approvals.approve');
+    Route::post('approvals/{batch}/reject', [ApprovalController::class, 'reject'])->name('approvals.reject');
+    Route::post('approvals/{batch}/cancel', [ApprovalController::class, 'cancel'])->name('approvals.cancel');
+
+    Route::get('drafts', [DraftController::class, 'index'])->name('drafts.index');
+    Route::post('drafts/submit', [DraftController::class, 'submit'])->name('drafts.submit');
+    Route::delete('drafts', [DraftController::class, 'destroyAll'])->name('drafts.destroy-all');
+    Route::delete('drafts/{changeRequest}', [DraftController::class, 'destroy'])->name('drafts.destroy');
 
     Route::middleware(EnsureSuperAdmin::class)->prefix('admin')->name('admin.')->group(function () {
         Route::resource('areas', AreaController::class)->only(['index', 'store', 'update', 'destroy']);

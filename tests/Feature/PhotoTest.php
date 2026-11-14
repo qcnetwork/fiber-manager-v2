@@ -122,7 +122,9 @@ class PhotoTest extends TestCase
         $this->actingAs($uploader)->upload();
         $photo = Photo::sole();
 
-        $this->actingAs($this->user(Role::Teknisi))->delete("/photos/{$photo->id}")->assertForbidden();
+        // Another technician only asks: the delete waits as a draft.
+        $this->actingAs($this->user(Role::Teknisi))->delete("/photos/{$photo->id}")->assertSessionHas('notice');
+        $this->assertModelExists($photo);
 
         $this->actingAs($uploader)->delete("/photos/{$photo->id}")->assertRedirect();
         $this->assertModelMissing($photo);

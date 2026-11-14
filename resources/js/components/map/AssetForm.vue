@@ -24,6 +24,10 @@ const props = defineProps<{
     /** Values of a technician's request an approver edits before approving it. */
     initial?: Record<string, unknown> | null;
     changeRequestId?: number | null;
+    /** The technician's own draft being changed. */
+    draftId?: number | null;
+    /** ODCs that only exist as drafts so far, offered as parent too. */
+    draftOdcs?: OdcOption[];
 }>();
 
 const emit = defineEmits<{
@@ -62,6 +66,7 @@ const form = useForm({
     // Nearby cables to connect the asset to on save
     connect_cables: [] as number[],
     change_request_id: props.changeRequestId ?? null,
+    draft_id: props.draftId ?? null,
 });
 applyInitial(form, props.initial);
 
@@ -134,7 +139,7 @@ const odcOptions = ref<OdcOption[]>([]);
 async function loadOdcOptions() {
     if (props.kind !== 'odp') return;
     // ODCs of every area, nearest first: an ODP may hang off an ODC across the area border.
-    odcOptions.value = await getJson<OdcOption[]>(route('odcs.options'), { lat: form.lat, lng: form.lng });
+    odcOptions.value = [...(props.draftOdcs ?? []), ...(await getJson<OdcOption[]>(route('odcs.options'), { lat: form.lat, lng: form.lng }))];
 }
 onMounted(loadOdcOptions);
 watch(() => form.area_id, loadOdcOptions);

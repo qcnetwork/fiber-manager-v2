@@ -2,12 +2,13 @@
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { PHOTO_DRAFTS, useApproval } from '@/composables/useApproval';
 import { compressImage } from '@/lib/image';
 import type { Photo, PhotoOwner, SharedData } from '@/types';
 import { router, usePage } from '@inertiajs/vue3';
-import { Camera, ChevronLeft, ChevronRight, ClipboardPaste, LoaderCircle, Trash2 } from '@lucide/vue';
+import { Camera, ChevronLeft, ChevronRight, ClipboardPaste, ImageUp, LoaderCircle, Pencil, Trash2 } from '@lucide/vue';
 import { useEventListener } from '@vueuse/core';
-import { computed, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue';
 
 const props = defineProps<{
     ownerType: PhotoOwner;
@@ -20,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{ changed: [] }>();
 
 const me = usePage<SharedData>().props.auth.user;
+const { needsApproval, saveLabel } = useApproval();
 
 // ---- Upload: compress in the browser, then send one photo per request
 const fileInput = ref<HTMLInputElement>();
@@ -112,10 +114,10 @@ function step(delta: number) {
     viewing.value = (viewing.value + delta + props.photos.length) % props.photos.length;
 }
 
-const mayDelete = (photo: Photo) => props.canDelete || (props.canEdit && photo.user_id === me.id);
+const mayDelete = (photo: Photo) => props.canDelete || (props.canEdit && (photo.user_id === me.id || needsApproval.value));
 
 function destroy(photo: Photo) {
-    if (!confirm('Hapus foto ini?')) return;
+    if (!confirm(needsApproval.value ? 'Ajukan hapus foto ini? Foto baru terhapus setelah disetujui admin.' : 'Hapus foto ini?')) return;
     router.delete(route('photos.destroy', { photo: photo.id }), {
         preserveScroll: true,
         preserveState: true,
@@ -125,6 +127,71 @@ function destroy(photo: Photo) {
         },
     });
 }
+
+// ---- Editing a photo: its caption, or a new image in its place (a draft for technicians)
+const photoDrafts = inject(PHOTO_DRAFTS, null);
+const draftOf = (photo: Photo) => photoDrafts?.value.get(photo.id) ?? null;
+
+const editing = ref(false);
+const editCaption = ref('');
+const replacement = ref<File | null>(null);
+const replacementPreview = ref<string | null>(null);
+const replaceInput = ref<HTMLInputElement>();
+const saving = ref(false);
+const editError = ref('');
+
+watch(viewing, () => cancelEdit());
+
+function startEdit(photo: Photo) {
+    editCaption.value = photo.caption ?? '';
+    editing.value = true;
+}
+
+function cancelEdit() {
+    editing.value = false;
+    editError.value = '';
+    setReplacement(null);
+}
+
+function setReplacement(file: File | null) {
+    if (replacementPreview.value) URL.revokeObjectURL(replacementPreview.value);
+    replacement.value = file;
+    replacementPreview.value = file ? URL.createObjectURL(file) : null;
+    if (replaceInput.value) replaceInput.value.value = '';
+}
+
+async function onReplacementChosen(event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    editError.value = '';
+    try {
+        setReplacement(await compressImage(file));
+    } catch {
+        editError.value = 'File gambar tidak bisa dibaca.';
+    }
+}
+
+function saveEdit(photo: Photo) {
+    saving.value = true;
+    editError.value = '';
+    router.post(
+        route('photos.update', { photo: photo.id }),
+        { _method: 'put', caption: editCaption.value, ...(replacement.value ? { photo: replacement.value } : {}) },
+        {
+            forceFormData: true,
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => {
+                viewing.value = null;
+                emit('changed');
+            },
+            onError: (errors) => (editError.value = errors.photo ?? errors.caption ?? Object.values(errors)[0] ?? 'Gagal menyimpan.'),
+            onFinish: () => (saving.value = false),
+        },
+    );
+}
+
+onBeforeUnmount(() => setReplacement(null));
 
 const formatDate = (iso: string) =>
     new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -141,11 +208,24 @@ const formatDate = (iso: string) =>
                 v-for="(photo, i) in photos"
                 :key="photo.id"
                 type="button"
-                class="aspect-square overflow-hidden rounded-md border bg-muted"
+                class="relative aspect-square overflow-hidden rounded-md border bg-muted"
+                :class="draftOf(photo) && 'ring-2 ring-orange-500'"
                 :title="photo.caption ?? ''"
                 @click="viewing = i"
             >
-                <img :src="photo.thumb_url" :alt="photo.caption ?? 'Foto'" loading="lazy" class="size-full object-cover" />
+                <img
+                    :src="photo.thumb_url"
+                    :alt="photo.caption ?? 'Foto'"
+                    loading="lazy"
+                    class="size-full object-cover"
+                    :class="draftOf(photo) === 'deleted' && 'opacity-40'"
+                />
+                <span
+                    v-if="draftOf(photo)"
+                    class="absolute inset-x-0 bottom-0 bg-orange-600/90 px-1 py-0.5 text-center text-[10px] font-semibold text-white"
+                >
+                    {{ draftOf(photo) === 'deleted' ? 'Draft hapus' : 'Draft edit' }}
+                </span>
             </button>
         </div>
         <p v-else-if="!canEdit" class="text-sm text-muted-foreground">Belum ada foto.</p>
@@ -210,11 +290,48 @@ const formatDate = (iso: string) =>
                     </template>
                 </div>
 
-                <div class="flex justify-between gap-2">
+                <p
+                    v-if="draftOf(current)"
+                    class="rounded-md border border-orange-300 bg-orange-50 px-3 py-1.5 text-xs text-orange-900 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-200"
+                >
+                    {{
+                        draftOf(current) === 'deleted'
+                            ? 'Ada draft untuk menghapus foto ini.'
+                            : 'Ada draft untuk mengubah foto ini. Lihat atau hapus drafnya di bar draft.'
+                    }}
+                </p>
+
+                <form v-if="editing" class="flex flex-col gap-2 rounded-md border p-3" @submit.prevent="saveEdit(current)">
+                    <Input v-model="editCaption" placeholder="Keterangan foto (opsional)" class="h-9" maxlength="255" :disabled="saving" />
+                    <div class="flex items-center gap-2">
+                        <img v-if="replacementPreview" :src="replacementPreview" alt="Foto pengganti" class="size-16 rounded border object-cover" />
+                        <Button type="button" variant="outline" size="sm" :disabled="saving" @click="replaceInput?.click()">
+                            <ImageUp class="size-4" /> {{ replacement ? 'Pilih foto lain' : 'Ganti foto' }}
+                        </Button>
+                        <Button v-if="replacement" type="button" variant="ghost" size="sm" :disabled="saving" @click="setReplacement(null)">
+                            Batal ganti
+                        </Button>
+                        <input ref="replaceInput" type="file" accept="image/*" class="hidden" @change="onReplacementChosen" />
+                    </div>
+                    <p v-if="needsApproval" class="text-xs text-muted-foreground">Perubahan disimpan sebagai draft dan berlaku setelah disetujui.</p>
+                    <p v-if="editError" class="text-sm text-red-600">{{ editError }}</p>
+                    <div class="flex justify-end gap-2">
+                        <Button type="button" variant="ghost" size="sm" :disabled="saving" @click="cancelEdit">Batal</Button>
+                        <Button type="submit" size="sm" :disabled="saving">
+                            <LoaderCircle v-if="saving" class="size-4 animate-spin" />
+                            {{ saveLabel }}
+                        </Button>
+                    </div>
+                </form>
+
+                <div v-else class="flex flex-wrap justify-between gap-2">
                     <Button as="a" :href="current.url" target="_blank" variant="outline" size="sm">Buka ukuran penuh</Button>
-                    <Button v-if="mayDelete(current)" variant="destructive" size="sm" @click="destroy(current)">
-                        <Trash2 class="size-4" /> Hapus foto
-                    </Button>
+                    <div class="flex gap-2">
+                        <Button v-if="canEdit" variant="outline" size="sm" @click="startEdit(current)"><Pencil class="size-4" /> Edit / ganti</Button>
+                        <Button v-if="mayDelete(current)" variant="destructive" size="sm" @click="destroy(current)">
+                            <Trash2 class="size-4" /> {{ needsApproval ? 'Hapus (draft)' : 'Hapus foto' }}
+                        </Button>
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>

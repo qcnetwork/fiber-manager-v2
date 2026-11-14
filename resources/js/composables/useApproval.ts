@@ -1,6 +1,6 @@
 import type { SharedData } from '@/types';
 import { usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, type InjectionKey, type Ref } from 'vue';
 
 /**
  * Fills a form with the values of a change request an approver is editing; only fields the form has.
@@ -22,7 +22,10 @@ export function useApproval() {
 
     return {
         needsApproval,
-        saveLabel: computed(() => (needsApproval.value ? 'Kirim request' : 'Simpan')),
-        deleteLabel: computed(() => (needsApproval.value ? 'Minta hapus' : 'Hapus')),
+        saveLabel: computed(() => (needsApproval.value ? 'Simpan draft' : 'Simpan')),
+        deleteLabel: computed(() => (needsApproval.value ? 'Hapus (draft)' : 'Hapus')),
     };
 }
+
+/** Photos a technician's drafts change, by photo id: "updated" or "deleted". Provided by the map. */
+export const PHOTO_DRAFTS: InjectionKey<Ref<Map<number, string>>> = Symbol('photoDrafts');

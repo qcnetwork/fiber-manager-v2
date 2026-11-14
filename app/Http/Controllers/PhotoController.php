@@ -55,16 +55,60 @@ class PhotoController extends Controller
         ]);
     }
 
+    /**
+     * Changes a photo's caption and/or puts a new image in its place.
+     */
+    public function update(Request $request, Photo $photo, PhotoService $photos): RedirectResponse
+    {
+        $this->ownerOrFail($request, $photo);
+        abort_unless($request->user()->canEditNetwork(), 403);
+
+        $data = $request->validate([
+            'caption' => ['nullable', 'string', 'max:255'],
+            'photo' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:8192'],
+        ], [
+            'photo.mimes' => 'Format foto harus JPG, PNG, atau WebP.',
+            'photo.max' => 'Ukuran foto maksimal 8 MB.',
+        ]);
+
+        $changes = [];
+        if ($request->has('caption') && ($data['caption'] ?? null) !== $photo->caption) {
+            $changes['caption'] = [$photo->caption, $data['caption'] ?? null];
+            $photo->caption = $data['caption'] ?? null;
+        }
+        if ($file = $request->file('photo')) {
+            $photos->replace($photo, $file);
+            $changes['photo'] = ['Foto lama', 'Diganti foto baru'];
+        }
+
+        // One log entry for both; the file columns themselves are not logged.
+        if ($changes) {
+            $photo->saveQuietly();
+            $photo->logActivity('updated', $changes);
+        }
+
+        return back();
+    }
+
     public function destroy(Request $request, Photo $photo): RedirectResponse
     {
-        $owner = $photo->photoable;
-        abort_if($owner === null || ($owner instanceof Area && ! $request->user()->canAccessArea($owner->id)), 404);
+        $this->ownerOrFail($request, $photo);
 
+        // Technicians' deletes are drafts an admin approves, so they may ask to delete anyone's photo.
         $user = $request->user();
-        abort_unless($user->canDeleteNetwork() || ($user->canEditNetwork() && $photo->user_id === $user->id), 403);
+        abort_unless($user->canDeleteNetwork() || ($user->canEditNetwork() && ($photo->user_id === $user->id || $user->needsApproval())), 403);
 
         $photo->delete();
 
         return back();
+    }
+
+    /**
+     * Resolved through the area scope: photos of assets in other areas are a 404.
+     */
+    private function ownerOrFail(Request $request, Photo $photo): void
+    {
+        $owner = $photo->photoable;
+        abort_if($owner === null || ($owner instanceof Area && ! $request->user()->canAccessArea($owner->id)), 404);
     }
 }

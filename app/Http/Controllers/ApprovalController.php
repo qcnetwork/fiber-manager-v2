@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Area;
+use App\Models\ChangeBatch;
 use App\Models\ChangeRequest;
 use App\Models\OdpPort;
 use App\Models\Photo;
@@ -17,7 +18,8 @@ use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Change requests from technicians: approvers approve, reject or edit them; technicians follow their own.
+ * Batches of changes from technicians: approvers approve or reject them as a whole and may change an item
+ * first; technicians follow their own.
  */
 class ApprovalController extends Controller
 {
@@ -31,155 +33,157 @@ class ApprovalController extends Controller
         $filters = $request->validate([
             'tab' => ['nullable', Rule::in(['pending', 'history'])],
             'area_id' => ['nullable', 'integer'],
-            'type' => ['nullable', 'string', 'max:30'],
         ]);
         $tab = $filters['tab'] ?? 'pending';
 
-        $query = ChangeRequest::visibleTo($user)
-            ->with(['user:id,name', 'reviewer:id,name', 'area:id,code,name'])
-            ->when($tab === 'pending', fn ($q) => $q->pending()->oldest(), fn ($q) => $q->where('status', '!=', ChangeRequest::PENDING)->latest('reviewed_at')->latest('id'))
+        $page = ChangeBatch::visibleTo($user)
+            ->with(['user:id,name', 'reviewer:id,name', 'area:id,code,name', 'items'])
+            ->when($tab === 'pending', fn ($q) => $q->pending()->oldest('submitted_at'), fn ($q) => $q->where('status', '!=', ChangeBatch::PENDING)->latest('reviewed_at')->latest('id'))
             ->when($filters['area_id'] ?? null, fn ($q, $areaId) => $q->where('area_id', $areaId))
-            ->when($filters['type'] ?? null, fn ($q, $type) => $q->where('subject_type', $type));
+            ->paginate(10)
+            ->withQueryString();
+        $page->getCollection()->transform(fn (ChangeBatch $batch) => $this->present($batch, $user->canApprove()));
 
-        $page = $query->paginate(20)->withQueryString();
-        $page->getCollection()->transform(fn (ChangeRequest $cr) => $this->present($cr, $user->canApprove()));
-
-        // Technicians have now seen what was decided on their requests.
+        // Technicians have now seen what was decided on their batches.
         if ($user->needsApproval()) {
-            ChangeRequest::where('user_id', $user->id)->whereNull('seen_at')->where('status', '!=', ChangeRequest::PENDING)->update(['seen_at' => now()]);
+            ChangeBatch::where('user_id', $user->id)->whereNull('seen_at')->where('status', '!=', ChangeBatch::PENDING)->update(['seen_at' => now()]);
         }
 
         return Inertia::render('Approvals', [
-            'requests' => $page,
-            'filters' => ['tab' => $tab, 'area_id' => $filters['area_id'] ?? null, 'type' => $filters['type'] ?? null],
+            'batches' => $page,
+            'filters' => ['tab' => $tab, 'area_id' => $filters['area_id'] ?? null],
             'areas' => $user->seesAllAreas() && $user->canApprove() ? Area::orderBy('name')->get(['id', 'code', 'name']) : [],
             'canApprove' => $user->canApprove(),
         ]);
     }
 
     /**
-     * The stored request, for opening it in the map form before approving.
+     * One change of a pending batch with the rest of the batch, for opening it in its map form.
      */
     public function show(Request $request, ChangeRequest $changeRequest): JsonResponse
     {
-        $cr = $this->reviewable($request, $changeRequest);
-        abort_unless(in_array($cr->route_name, ChangeRequestService::EDITABLE_ROUTES, true), 404);
+        $item = ChangeRequest::where('status', ChangeRequest::PENDING)
+            ->whereHas('batch', fn ($q) => $q->reviewableBy($request->user())->pending())
+            ->findOrFail($changeRequest->id);
+        abort_unless(in_array($item->route_name, ChangeRequestService::EDITABLE_ROUTES, true), 404);
 
-        $params = $cr->route_params ?? [];
-        $context = [];
-        if ($cr->route_name === 'ports.update') {
-            $context['odp_id'] = OdpPort::whereKey($params['port'] ?? null)->value('odp_id');
-        }
+        $params = $item->route_params ?? [];
 
-        return response()->json(['request' => [
-            'id' => $cr->id,
-            'route_name' => $cr->route_name,
-            'route_params' => $params,
-            'payload' => $cr->payload ?? [],
-            'user' => $cr->user?->name,
-            'subject_label' => $cr->subject_label,
-            'context' => $context,
-        ]]);
-    }
-
-    public function approve(Request $request, ChangeRequest $changeRequest): RedirectResponse
-    {
-        $cr = $this->reviewable($request, $changeRequest);
-        $note = $request->validate(['note' => ['nullable', 'string', 'max:1000']])['note'] ?? null;
-
-        $error = $this->requests->approve($cr, $request->user(), $note);
-        if ($error !== null) {
-            return back()->with('noticeError', "Request #{$cr->id} gagal diterapkan: {$error}");
-        }
-
-        return back()->with('notice', "Request #{$cr->id} disetujui.");
-    }
-
-    public function reject(Request $request, ChangeRequest $changeRequest): RedirectResponse
-    {
-        $cr = $this->reviewable($request, $changeRequest);
-        $note = $request->validate(['note' => ['nullable', 'string', 'max:1000']])['note'] ?? null;
-
-        $this->requests->reject($cr, $request->user(), $note);
-
-        return back()->with('notice', "Request #{$cr->id} ditolak.");
+        return response()->json([
+            'request' => [
+                'id' => $item->id,
+                'batch_id' => $item->batch_id,
+                'route_name' => $item->route_name,
+                'route_params' => $params,
+                'payload' => $item->payload ?? [],
+                'user' => $item->user?->name,
+                'subject_label' => $item->subject_label,
+                'context' => $item->route_name === 'ports.update' ? ['odp_id' => OdpPort::whereKey($params['port'] ?? null)->value('odp_id')] : [],
+            ],
+            // New assets of the batch, so the form can refer to them.
+            'overlay' => $this->requests->overlay($item->batch->items()->get()),
+        ]);
     }
 
     /**
-     * A technician withdraws their own pending request.
+     * A batch's changes on the map, for whoever may see the batch.
      */
-    public function cancel(Request $request, ChangeRequest $changeRequest): RedirectResponse
+    public function overlay(Request $request, ChangeBatch $batch): JsonResponse
     {
-        abort_unless($changeRequest->user_id === $request->user()->id, 404);
-        abort_unless($changeRequest->isPending(), 422, 'Request ini sudah diproses.');
+        $batch = ChangeBatch::visibleTo($request->user())->findOrFail($batch->id);
 
-        $this->requests->cancel($changeRequest);
+        return response()->json(['batch_id' => $batch->id, 'items' => $this->requests->overlay($batch->items()->get())]);
+    }
 
-        return back()->with('notice', "Request #{$changeRequest->id} dibatalkan.");
+    public function approve(Request $request, ChangeBatch $batch): RedirectResponse
+    {
+        $batch = $this->reviewable($request, $batch);
+        $note = $request->validate(['note' => ['nullable', 'string', 'max:1000']])['note'] ?? null;
+
+        $error = $this->requests->approveBatch($batch, $request->user(), $note);
+        if ($error !== null) {
+            return back()->with('noticeError', "Paket #{$batch->id} gagal diterapkan, tidak ada yang disimpan — {$error}");
+        }
+
+        return back()->with('notice', "Paket #{$batch->id} disetujui.");
+    }
+
+    public function reject(Request $request, ChangeBatch $batch): RedirectResponse
+    {
+        $batch = $this->reviewable($request, $batch);
+        $note = $request->validate(['note' => ['nullable', 'string', 'max:1000']])['note'] ?? null;
+
+        $this->requests->rejectBatch($batch, $request->user(), $note);
+
+        return back()->with('notice', "Paket #{$batch->id} ditolak.");
     }
 
     /**
-     * A photo waiting in a request, for whoever may see the request.
+     * A technician withdraws their own pending batch.
+     */
+    public function cancel(Request $request, ChangeBatch $batch): RedirectResponse
+    {
+        abort_unless($batch->user_id === $request->user()->id, 404);
+        abort_unless($batch->isPending(), 422, 'Paket ini sudah diproses.');
+
+        $this->requests->cancelBatch($batch);
+
+        return back()->with('notice', "Paket #{$batch->id} dibatalkan.");
+    }
+
+    /**
+     * A photo waiting in a change: for its author while it is a draft, else for whoever may see its batch.
      */
     public function file(Request $request, ChangeRequest $changeRequest, int $index): StreamedResponse
     {
-        $cr = ChangeRequest::visibleTo($request->user())->findOrFail($changeRequest->id);
-        $path = $cr->files[$index]['path'] ?? null;
+        $user = $request->user();
+        $visible = $changeRequest->batch_id
+            ? ChangeBatch::visibleTo($user)->whereKey($changeRequest->batch_id)->exists()
+            : $changeRequest->user_id === $user->id;
+        abort_unless($visible, 404);
+
+        $path = $changeRequest->files[$index]['path'] ?? null;
         abort_unless($path && Storage::disk(Photo::DISK)->exists($path), 404);
 
         return Storage::disk(Photo::DISK)->response($path, null, ['Cache-Control' => 'private, max-age=3600']);
     }
 
     /**
-     * A pending request the user may decide on; anything else is a 404.
+     * A pending batch the user may decide on; anything else is a 404.
      */
-    private function reviewable(Request $request, ChangeRequest $changeRequest): ChangeRequest
+    private function reviewable(Request $request, ChangeBatch $batch): ChangeBatch
     {
-        $cr = ChangeRequest::reviewableBy($request->user())->findOrFail($changeRequest->id);
-        abort_unless($cr->isPending(), 422, 'Request ini sudah diproses.');
+        $batch = ChangeBatch::reviewableBy($request->user())->findOrFail($batch->id);
+        abort_unless($batch->isPending(), 422, 'Paket ini sudah diproses.');
 
-        return $cr;
+        return $batch;
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function present(ChangeRequest $cr, bool $canApprove): array
+    private function present(ChangeBatch $batch, bool $canApprove): array
     {
+        $pending = $batch->isPending();
+
         return [
-            ...$cr->only('id', 'action', 'subject_type', 'subject_id', 'subject_label', 'status', 'preview', 'review_note'),
-            'created_at' => $cr->created_at?->toIso8601String(),
-            'reviewed_at' => $cr->reviewed_at?->toIso8601String(),
-            'user' => $cr->user?->only('id', 'name'),
-            'reviewer' => $cr->reviewer?->only('id', 'name'),
-            'area' => $cr->area?->only('id', 'code', 'name'),
-            'photos' => collect($cr->isPending() ? ($cr->files ?? []) : [])->keys()
-                ->map(fn (int $i) => route('approvals.file', [$cr->id, $i]))->all(),
-            'conflict' => $canApprove ? $cr->conflict() : null,
-            'editable' => $canApprove && $cr->isPending() && in_array($cr->route_name, ChangeRequestService::EDITABLE_ROUTES, true),
-            'map' => $this->mapLink($cr),
+            ...$batch->only('id', 'status', 'note', 'review_note'),
+            'submitted_at' => $batch->submitted_at?->toIso8601String(),
+            'reviewed_at' => $batch->reviewed_at?->toIso8601String(),
+            'user' => $batch->user?->only('id', 'name'),
+            'reviewer' => $batch->reviewer?->only('id', 'name'),
+            'area' => $batch->area?->only('id', 'code', 'name'),
+            'map' => $pending ? route('map', ['batch' => $batch->id]) : null,
+            'items' => $batch->items->map(fn (ChangeRequest $item) => [
+                ...$item->only('id', 'action', 'subject_type', 'subject_id', 'subject_label', 'preview'),
+                // A change to an existing photo: the photo as it is now.
+                'current_photo' => $pending && $item->subject_type === 'photo' && $item->subject_id
+                    ? route('photos.file', ['photo' => $item->subject_id, 'thumb' => 1]) : null,
+                'photos' => collect($pending ? ($item->files ?? []) : [])->keys()
+                    ->map(fn (int $i) => route('approvals.file', [$item->id, $i]))->all(),
+                'conflict' => $canApprove && $pending ? $item->conflict() : null,
+                'editable' => $canApprove && $pending && in_array($item->route_name, ChangeRequestService::EDITABLE_ROUTES, true),
+            ])->values(),
         ];
-    }
-
-    /**
-     * Where the request's asset is on the map, if it can be shown there.
-     */
-    private function mapLink(ChangeRequest $cr): ?string
-    {
-        $kind = match ($cr->subject_type) {
-            'odc', 'odp', 'joint', 'cable', 'customer', 'pop' => $cr->subject_type,
-            default => null,
-        };
-        if ($kind && $cr->subject_id) {
-            return route('map', ['select' => "{$kind}:{$cr->subject_id}"]);
-        }
-
-        // A new asset: where it would be placed.
-        $payload = $cr->payload ?? [];
-        if (isset($payload['lat'], $payload['lng']) && is_numeric($payload['lat']) && is_numeric($payload['lng'])) {
-            return route('map', ['at' => "{$payload['lat']},{$payload['lng']}"]);
-        }
-
-        return null;
     }
 }

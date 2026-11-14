@@ -341,7 +341,7 @@ const { saveLabel, needsApproval } = useApproval();
                 <InputError :message="error" />
                 <div class="flex gap-2">
                     <Button size="sm" :disabled="saving || !pairs.length" @click="save">
-                        <LoaderCircle v-if="saving" class="size-4 animate-spin" /> {{ needsApproval ? 'Kirim request' : 'Simpan sambungan' }}
+                        <LoaderCircle v-if="saving" class="size-4 animate-spin" /> {{ needsApproval ? 'Simpan draft' : 'Simpan sambungan' }}
                     </Button>
                     <Button size="sm" variant="outline" @click="adding = false">Batal</Button>
                 </div>

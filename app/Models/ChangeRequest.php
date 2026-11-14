@@ -8,13 +8,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * A change a technician sent that waits for a super admin or the area's admin to approve it.
+ * One change by a technician: first a draft only they see (shown on their map), then part of a batch
+ * that waits for approval.
  *
- * It keeps the original request (route, parameters, payload, uploaded files) so approving replays it
- * through the same controller, plus a preview of what it would change.
+ * It keeps the original request (route, parameters, payload, uploaded files) so it can be replayed
+ * through the same controller, plus a preview of what it changes. A record a draft creates is referred
+ * to by other drafts as the negative id of that draft (token), until the batch is applied.
  */
 class ChangeRequest extends Model
 {
+    public const DRAFT = 'draft';
+
     public const PENDING = 'pending';
 
     public const APPROVED = 'approved';
@@ -27,11 +31,11 @@ class ChangeRequest extends Model
     public const PENDING_DIR = 'pending';
 
     protected $fillable = [
-        'user_id', 'area_id', 'action', 'subject_type', 'subject_id', 'subject_label', 'route_name', 'route_params',
-        'method', 'payload', 'files', 'preview', 'base_updated_at', 'status', 'reviewer_id', 'reviewed_at', 'review_note', 'seen_at',
+        'batch_id', 'sequence', 'user_id', 'area_id', 'action', 'subject_type', 'subject_id', 'subject_label', 'route_name',
+        'route_params', 'method', 'payload', 'files', 'preview', 'base_updated_at', 'status',
     ];
 
-    protected $hidden = ['payload', 'files', 'route_params'];
+    protected $hidden = ['files', 'route_params'];
 
     protected function casts(): array
     {
@@ -41,8 +45,6 @@ class ChangeRequest extends Model
             'files' => 'array',
             'preview' => 'array',
             'base_updated_at' => 'datetime',
-            'reviewed_at' => 'datetime',
-            'seen_at' => 'datetime',
         ];
     }
 
@@ -56,9 +58,9 @@ class ChangeRequest extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function reviewer(): BelongsTo
+    public function batch(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'reviewer_id');
+        return $this->belongsTo(ChangeBatch::class, 'batch_id');
     }
 
     public function area(): BelongsTo
@@ -66,46 +68,28 @@ class ChangeRequest extends Model
         return $this->belongsTo(Area::class);
     }
 
-    public function isPending(): bool
-    {
-        return $this->status === self::PENDING;
-    }
-
     /**
-     * Technicians see their own requests; approvers see the ones in their area (super admins: all).
+     * How other drafts refer to the record this draft creates.
      */
-    public function scopeVisibleTo(Builder $query, User $user): void
+    public function token(): int
     {
-        if ($user->canApprove()) {
-            if (! $user->seesAllAreas()) {
-                $query->where('area_id', $user->area_id);
-            }
-
-            return;
-        }
-
-        $query->where('user_id', $user->id);
+        return -$this->id;
     }
 
     /**
-     * Requests the user may approve or reject.
+     * The user's drafts not sent yet, in the order they were made.
      */
-    public function scopeReviewableBy(Builder $query, User $user): void
+    public function scopeDraftsOf(Builder $query, User $user): void
     {
-        $user->canApprove() ? $query->visibleTo($user) : $query->whereRaw('1 = 0');
-    }
-
-    public function scopePending(Builder $query): void
-    {
-        $query->where('status', self::PENDING);
+        $query->where('user_id', $user->id)->where('status', self::DRAFT)->orderBy('sequence')->orderBy('id');
     }
 
     /**
-     * Whether the asset changed after the request was made, so the request may overwrite newer data.
+     * Whether the asset changed after the draft was made, so applying it may overwrite newer data.
      */
     public function conflict(): ?string
     {
-        if (! $this->isPending() || $this->subject_id === null || ! in_array($this->action, ['updated', 'deleted'], true)) {
+        if (! in_array($this->status, [self::DRAFT, self::PENDING], true) || $this->subject_id === null || ! in_array($this->action, ['updated', 'deleted'], true)) {
             return null;
         }
 
@@ -116,10 +100,10 @@ class ChangeRequest extends Model
 
         $current = $class::withoutGlobalScopes()->find($this->subject_id);
         if (! $current) {
-            return 'Data ini sudah dihapus sejak request dikirim.';
+            return 'Data ini sudah dihapus sejak request dibuat.';
         }
         if ($this->base_updated_at && $current->updated_at && $current->updated_at->gt($this->base_updated_at)) {
-            return 'Data ini sudah diubah orang lain sejak request dikirim ('.$current->updated_at->format('d/m/Y H:i').'). Periksa sebelum menyetujui.';
+            return 'Data ini sudah diubah orang lain sejak request dibuat ('.$current->updated_at->format('d/m/Y H:i').'). Periksa sebelum menyetujui.';
         }
 
         return null;

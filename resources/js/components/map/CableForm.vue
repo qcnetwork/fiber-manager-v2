@@ -24,6 +24,8 @@ const props = defineProps<{
     /** Values of a technician's request an approver edits before approving it. */
     initial?: Record<string, unknown> | null;
     changeRequestId?: number | null;
+    /** The technician's own draft being changed. */
+    draftId?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -45,6 +47,7 @@ const form = useForm({
     status: props.cable?.status ?? 'aktif',
     notes: props.cable?.notes ?? '',
     change_request_id: props.changeRequestId ?? null,
+    draft_id: props.draftId ?? null,
 });
 applyInitial(form, props.initial);
 
@@ -205,7 +208,7 @@ const { needsApproval } = useApproval();
         <div class="flex gap-2">
             <Button type="submit" class="flex-1" :disabled="form.processing || path.length < 2">
                 <LoaderCircle v-if="form.processing" class="size-4 animate-spin" />
-                {{ needsApproval ? 'Kirim request' : 'Simpan kabel' }}
+                {{ needsApproval ? 'Simpan draft' : 'Simpan kabel' }}
             </Button>
             <Button type="button" variant="outline" @click="emit('cancel')">Batal</Button>
         </div>

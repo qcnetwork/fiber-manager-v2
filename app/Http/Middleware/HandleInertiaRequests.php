@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\ChangeBatch;
 use App\Models\ChangeRequest;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -47,12 +48,13 @@ class HandleInertiaRequests extends Middleware
                 'needsApproval' => (bool) $user?->needsApproval(),
                 'canApprove' => (bool) $user?->canApprove(),
             ],
-            // Badge counts: requests waiting for an approver, decisions a technician hasn't seen yet.
+            // Badge counts: batches waiting for an approver; a technician's unsent drafts and decisions not seen yet.
             'approvals' => fn () => $user ? [
-                'pending' => $user->canApprove() ? ChangeRequest::reviewableBy($user)->pending()->count() : 0,
+                'pending' => $user->canApprove() ? ChangeBatch::reviewableBy($user)->pending()->count() : 0,
                 'decided_unseen' => $user->needsApproval()
-                    ? ChangeRequest::where('user_id', $user->id)->where('status', '!=', ChangeRequest::PENDING)->whereNull('seen_at')->count()
+                    ? ChangeBatch::where('user_id', $user->id)->where('status', '!=', ChangeBatch::PENDING)->whereNull('seen_at')->count()
                     : 0,
+                'drafts' => $user->needsApproval() ? ChangeRequest::draftsOf($user)->count() : 0,
             ] : null,
             'flash' => [
                 'importResult' => fn () => $request->session()->get('importResult'),

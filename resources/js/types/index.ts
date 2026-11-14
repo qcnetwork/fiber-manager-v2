@@ -30,7 +30,7 @@ export interface SharedData {
     [key: string]: unknown;
     name: string;
     auth: Auth;
-    approvals: { pending: number; decided_unseen: number } | null;
+    approvals: { pending: number; decided_unseen: number; drafts: number } | null;
     flash: { importResult?: unknown; notice?: string | null; noticeError?: string | null };
     ziggy: {
         location: string;

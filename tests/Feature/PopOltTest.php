@@ -74,7 +74,7 @@ class PopOltTest extends TestCase
         // Connecting waits for an admin's approval.
         $this->post("/olt-ports/{$port->id}/odcs", ['odc_id' => $a->id])->assertSessionHas('notice');
         $this->assertNull($a->fresh()->olt_port_id);
-        $this->assertSame(1, ChangeRequest::pending()->count());
+        $this->assertSame(1, ChangeRequest::where('status', ChangeRequest::DRAFT)->count());
 
         // One PON port may feed several ODCs.
         $this->actingAs($this->user());
