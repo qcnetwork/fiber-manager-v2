@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\Role;
 use App\Models\Area;
 use App\Models\Cable;
+use App\Models\ChangeRequest;
 use App\Models\Odc;
 use App\Models\Olt;
 use App\Models\OltPort;
@@ -70,7 +71,13 @@ class PopOltTest extends TestCase
         $this->post('/olts', ['code' => 'X', 'cards' => [['slot' => 1, 'ports' => 8]]])->assertForbidden();
         $this->patch("/olt-ports/{$port->id}", ['status' => 'rusak'])->assertForbidden();
 
+        // Connecting waits for an admin's approval.
+        $this->post("/olt-ports/{$port->id}/odcs", ['odc_id' => $a->id])->assertSessionHas('notice');
+        $this->assertNull($a->fresh()->olt_port_id);
+        $this->assertSame(1, ChangeRequest::where('status', ChangeRequest::DRAFT)->count());
+
         // One PON port may feed several ODCs.
+        $this->actingAs($this->user());
         $this->post("/olt-ports/{$port->id}/odcs", ['odc_id' => $a->id])->assertSessionHasNoErrors();
         $this->post("/olt-ports/{$port->id}/odcs", ['odc_id' => $b->id])->assertSessionHasNoErrors();
         $this->assertSame([$a->id, $b->id], $port->odcs()->orderBy('id')->pluck('id')->all());
@@ -105,7 +112,7 @@ class PopOltTest extends TestCase
 
         $payload = fn (int $portId) => ['code' => $odc->code, 'lat' => $odc->lat, 'lng' => $odc->lng, 'capacity' => 48, 'status' => 'aktif', 'olt_port_id' => $portId];
 
-        $this->actingAs($this->user(Role::Teknisi));
+        $this->actingAs($this->user());
         $this->put("/odcs/{$odc->id}", $payload($elsewhere->ports()->first()->id))->assertSessionHasErrors('olt_port_id');
         $this->put("/odcs/{$odc->id}", $payload($here->id))->assertSessionHasNoErrors();
 

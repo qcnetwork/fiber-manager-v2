@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useApproval } from '@/composables/useApproval';
 import StatusBadge from '@/components/map/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { cableTypes, endLabel, formatLength } from '@/lib/cables';
@@ -55,6 +56,7 @@ const coreCounts = computed(() => {
     for (const core of props.cable.core_list ?? []) counts[core.status]++;
     return counts;
 });
+const { needsApproval, deleteLabel } = useApproval();
 </script>
 
 <template>
@@ -179,7 +181,9 @@ const coreCounts = computed(() => {
             <Button as="a" :href="route('splice-sheet', { kind: 'cable', id: cable.id })" target="_blank" variant="outline" size="sm"
                 ><FileText class="size-4" /> Splice sheet</Button
             >
-            <Button v-if="canDelete" variant="destructive" size="sm" @click="emit('delete')"><Trash2 class="size-4" /> Hapus</Button>
+            <Button v-if="canDelete || needsApproval" variant="destructive" size="sm" @click="emit('delete')"
+                ><Trash2 class="size-4" /> {{ deleteLabel }}</Button
+            >
         </div>
     </div>
 </template>

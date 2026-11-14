@@ -17,7 +17,7 @@ class ActivityLogTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function userIn(Area $area, Role $role = Role::Teknisi): User
+    private function userIn(Area $area, Role $role = Role::AdminArea): User
     {
         return User::factory()->create(['area_id' => $area->id, 'role' => $role]);
     }
@@ -121,7 +121,7 @@ class ActivityLogTest extends TestCase
         $this->actingAs($this->userIn($a))->post('/odps', ['code' => 'ODP-A1', 'lat' => -6.2, 'lng' => 106.8, 'capacity' => 8, 'status' => 'aktif']);
         $this->actingAs($this->userIn($b))->post('/odps', ['code' => 'ODP-B1', 'lat' => -6.2, 'lng' => 106.8, 'capacity' => 8, 'status' => 'aktif']);
 
-        $this->actingAs($this->userIn($a))->get('/activity')->assertForbidden();
+        $this->actingAs($this->userIn($a, Role::Teknisi))->get('/activity')->assertForbidden();
 
         $this->actingAs($this->userIn($a, Role::AdminArea))
             ->get('/activity')

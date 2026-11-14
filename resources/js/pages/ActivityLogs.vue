@@ -4,14 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { activityActions, activityTypes, type ActivityAction } from '@/lib/activity';
+import { activityActions, activityTypes, changeLines, type ActivityAction, type ActivityChange } from '@/lib/activity';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ChevronLeft, ChevronRight, X } from '@lucide/vue';
 import { watchDebounced } from '@vueuse/core';
 import { computed, reactive } from 'vue';
-
-type Change = [unknown, unknown];
 
 interface Log {
     id: number;
@@ -20,7 +18,7 @@ interface Log {
     subject_type: string;
     subject_id: number | null;
     subject_label: string;
-    changes: Record<string, Change> | null;
+    changes: Record<string, ActivityChange> | null;
     ip_address: string | null;
     created_at: string;
     area: string | null;
@@ -46,58 +44,6 @@ const breadcrumbs: BreadcrumbItem[] = [{ title: 'Riwayat Aktivitas', href: '/act
 
 const types = activityTypes;
 const actions = activityActions;
-
-const fields: Record<string, string> = {
-    code: 'Kode',
-    name: 'Nama',
-    lat: 'Latitude',
-    lng: 'Longitude',
-    center_lat: 'Latitude',
-    center_lng: 'Longitude',
-    address: 'Alamat',
-    pole_number: 'No. tiang',
-    capacity: 'Kapasitas',
-    splitter_ratio: 'Splitter',
-    status: 'Status',
-    installed_at: 'Tanggal pasang',
-    notes: 'Catatan',
-    area_id: 'Area',
-    odc_id: 'ODC',
-    odc_port: 'Port ODC',
-    odp_id: 'ODP',
-    olt_id: 'OLT',
-    olt_port_id: 'Port OLT',
-    customer_id: 'Pelanggan',
-    customer_code: 'Kode pelanggan',
-    phone: 'Telepon',
-    package: 'Paket',
-    ont_sn: 'SN ONT',
-    type: 'Jenis',
-    sambungan: 'Sambungan',
-    tube_size: 'Core per tube',
-    cores: 'Core',
-    path: 'Jalur',
-    length_m: 'Panjang (m)',
-    from_type: 'Dari (jenis)',
-    from_id: 'Dari (id)',
-    to_type: 'Ke (jenis)',
-    to_id: 'Ke (id)',
-    caption: 'Keterangan',
-    username: 'Username',
-    email: 'Email',
-    role: 'Role',
-    password: 'Password',
-    brand: 'Merek',
-    ip_address: 'IP',
-    pon_ports: 'Jumlah PON',
-    slot: 'Slot',
-    port: 'Port',
-    number: 'Nomor',
-    odc: 'ODC',
-    odp: 'ODP',
-    cable: 'Kabel',
-    skipped: 'Dilewati',
-};
 
 // ---- Filters: applied as query parameters so the page can be bookmarked or linked to
 const form = reactive({
@@ -126,19 +72,7 @@ function clear() {
 const formatTime = (iso: string) =>
     new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-const show = (value: unknown) => (value === null || value === undefined || value === '' ? '–' : String(value));
-
-/** One readable line per changed field. */
-function changeLines(log: Log): { field: string; text: string }[] {
-    return Object.entries(log.changes ?? {}).map(([key, [before, after]]) => {
-        const field = fields[key] ?? key;
-        if (log.action === 'deleted') return { field, text: show(before) };
-        if (log.action === 'imported') return { field, text: show(after) };
-        // Masked columns (password, cable route) are stored without values.
-        if (before === null && after === null) return { field, text: 'diubah' };
-        return { field, text: `${show(before)} → ${show(after)}` };
-    });
-}
+const lines = (log: Log) => changeLines(log.action, log.changes);
 </script>
 
 <template>
@@ -181,8 +115,8 @@ function changeLines(log: Log): { field: string; text: string }[] {
                                     <span class="font-medium break-all">{{ log.subject_label }}</span>
                                     <span v-if="showArea && log.area" class="text-xs text-muted-foreground">· {{ log.area }}</span>
                                 </div>
-                                <dl v-if="changeLines(log).length" class="mt-1 grid gap-x-3 text-xs sm:grid-cols-[auto_1fr]">
-                                    <template v-for="line in changeLines(log)" :key="line.field">
+                                <dl v-if="lines(log).length" class="mt-1 grid gap-x-3 text-xs sm:grid-cols-[auto_1fr]">
+                                    <template v-for="line in lines(log)" :key="line.field">
                                         <dt class="text-muted-foreground">{{ line.field }}</dt>
                                         <dd class="mb-0.5 break-all">{{ line.text }}</dd>
                                     </template>

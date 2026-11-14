@@ -41,7 +41,7 @@ class CustomerTest extends TestCase
         return $customer;
     }
 
-    private function user(Role $role = Role::Teknisi, ?Area $area = null): User
+    private function user(Role $role = Role::AdminArea, ?Area $area = null): User
     {
         return User::factory()->create(['area_id' => ($area ?? $this->area)->id, 'role' => $role]);
     }

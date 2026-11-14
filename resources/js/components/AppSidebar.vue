@@ -4,7 +4,7 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { ArrowDownUp, Download, ClipboardPen, History, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
+import { ArrowDownUp, ClipboardCheck, Download, ClipboardPen, History, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
 import { computed } from 'vue';
 import { useInstallPrompt } from '@/composables/usePwa';
 import AppLogo from './AppLogo.vue';
@@ -51,12 +51,26 @@ const activityItem: NavItem = {
     icon: History,
 };
 
+// Approvers see requests waiting for them; technicians see their own requests and new decisions.
+const approvalItem = computed<NavItem>(() => {
+    const counts = page.props.approvals;
+    return {
+        title: page.props.auth.canApprove ? 'Approval' : 'Request Saya',
+        href: '/approvals',
+        icon: ClipboardCheck,
+        badge: page.props.auth.canApprove ? counts?.pending : counts?.decided_unseen,
+    };
+});
+
 // Sales accounts only use the coverage check; the history is for the admins who can delete data.
 const mainNavItems = computed(() => {
     const role = page.props.auth.user.role;
     if (role === 'sales') return [coverageItem, installRequestItem];
     if (role === 'viewer') return [...staffNavItems.filter((item) => item.href !== '/data'), installRequestItem]; // export holds customer data
-    const items = role === 'super_admin' || role === 'admin_area' ? [...staffNavItems, activityItem] : staffNavItems;
+    const items =
+        role === 'super_admin' || role === 'admin_area'
+            ? [...staffNavItems, approvalItem.value, activityItem]
+            : [...staffNavItems, approvalItem.value];
     return [...items, installRequestItem];
 });
 

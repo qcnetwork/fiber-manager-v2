@@ -5,6 +5,9 @@ export * from './network';
 export interface Auth {
     user: User;
     isSuperAdmin: boolean;
+    /** Changes wait for an admin's approval (technicians). */
+    needsApproval: boolean;
+    canApprove: boolean;
 }
 
 export interface BreadcrumbItem {
@@ -19,12 +22,16 @@ export interface NavItem {
     isActive?: boolean;
     /** Opens an outside page in a new tab. */
     external?: boolean;
+    /** Count shown next to the title (e.g. requests waiting). */
+    badge?: number;
 }
 
 export interface SharedData {
     [key: string]: unknown;
     name: string;
     auth: Auth;
+    approvals: { pending: number; decided_unseen: number; drafts: number } | null;
+    flash: { importResult?: unknown; notice?: string | null; noticeError?: string | null };
     ziggy: {
         location: string;
         url: string;

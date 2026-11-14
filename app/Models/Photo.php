@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class Photo extends Model
@@ -24,7 +25,8 @@ class Photo extends Model
 
     protected static function booted(): void
     {
-        static::deleted(fn (Photo $photo) => Storage::disk(self::DISK)->delete([$photo->path, $photo->thumb_path]));
+        // Only once the deletion is committed: a rolled-back delete (a dry run, a batch that failed) keeps its row, so it keeps its files.
+        static::deleted(fn (Photo $photo) => DB::afterCommit(fn () => Storage::disk(self::DISK)->delete([$photo->path, $photo->thumb_path])));
     }
 
     public function photoable(): MorphTo

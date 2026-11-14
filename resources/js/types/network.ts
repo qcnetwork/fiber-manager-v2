@@ -10,6 +10,8 @@ export interface Area {
 }
 
 export interface OdcMarker {
+    /** A technician's draft not applied yet (id is the draft's token). */
+    draft?: boolean;
     id: number;
     code: string;
     name: string | null;
@@ -71,6 +73,8 @@ export interface Pop {
 }
 
 export interface OdpMarker {
+    /** A technician's draft not applied yet (id is the draft's token). */
+    draft?: boolean;
     id: number;
     odc_id: number | null;
     code: string;
@@ -140,6 +144,8 @@ export type SpliceBoxType = 'joint_box' | 'roset';
 
 /** A joint box or rosette on the map. */
 export interface JointMarker {
+    /** A technician's draft not applied yet (id is the draft's token). */
+    draft?: boolean;
     id: number;
     type: SpliceBoxType;
     code: string;
@@ -248,6 +254,8 @@ export type CableType = 'feeder' | 'distribusi' | 'drop';
 export type LatLng = [number, number];
 
 export interface CableLine {
+    /** A technician's draft not applied yet (id is the draft's token). */
+    draft?: boolean;
     id: number;
     code: string | null;
     type: CableType;
@@ -409,4 +417,36 @@ export interface CableEndpoint {
     type: CableEndKind;
     id: number;
     code: string;
+}
+
+/** A technician's change kept as a draft (or part of a batch waiting for approval), as the map shows it. */
+export interface DraftItem {
+    id: number;
+    /** How other drafts refer to the record this one creates. */
+    token: number;
+    status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled';
+    action: 'created' | 'updated' | 'deleted' | 'moved';
+    /** odc, odp, joint, cable, customer, photo, splice, … */
+    kind: string;
+    route_name: string;
+    subject_id: number | null;
+    label: string | null;
+    lat: number | null;
+    lng: number | null;
+    path: LatLng[] | null;
+    payload: Record<string, unknown>;
+    preview: { action: string; type: string; label: string; changes: Record<string, [unknown, unknown]> | null }[] | null;
+    conflict: string | null;
+    editable: boolean;
+    /** It carries an uploaded image (a new or replacing photo). */
+    has_file: boolean;
+}
+
+/** A stored change opened in its map form: a draft the technician edits, or a batch item an approver edits. */
+export interface StoredChange {
+    id: number;
+    route_name: string;
+    route_params: Record<string, string | number>;
+    payload: Record<string, unknown>;
+    context?: { odp_id?: number | null };
 }

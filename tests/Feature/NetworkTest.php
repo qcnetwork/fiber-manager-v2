@@ -16,7 +16,7 @@ class NetworkTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function userIn(Area $area, Role $role = Role::Teknisi): User
+    private function userIn(Area $area, Role $role = Role::AdminArea): User
     {
         return User::factory()->create(['area_id' => $area->id, 'role' => $role]);
     }
@@ -69,7 +69,7 @@ class NetworkTest extends TestCase
         [$a, $b] = Area::factory()->count(2)->create();
         Odp::factory()->for($a)->create(['lat' => -6.2, 'lng' => 106.8]);
         Odp::factory()->for($b)->create(['lat' => -6.2, 'lng' => 106.8]);
-        $this->actingAs(User::factory()->create(['area_id' => null, 'role' => Role::Teknisi]));
+        $this->actingAs(User::factory()->create(['area_id' => null, 'role' => Role::AdminArea]));
 
         $this->assertCount(2, $this->getJson('/map/features?bbox=106,-7,107,-6')->json('odps'));
 
@@ -92,7 +92,7 @@ class NetworkTest extends TestCase
             ->assertSessionHasErrors('odc_id');
     }
 
-    public function test_viewer_cannot_edit_and_teknisi_cannot_delete()
+    public function test_viewer_cannot_edit_and_teknisi_delete_waits_for_approval()
     {
         $area = Area::factory()->create();
         $odp = Odp::factory()->for($area)->create();
@@ -101,7 +101,8 @@ class NetworkTest extends TestCase
             ->post('/odps', ['code' => 'ODP-V', 'lat' => -6.2, 'lng' => 106.8, 'capacity' => 8, 'status' => 'aktif'])
             ->assertForbidden();
 
-        $this->actingAs($this->userIn($area))->delete("/odps/{$odp->id}")->assertForbidden();
+        $this->actingAs($this->userIn($area, Role::Teknisi))->delete("/odps/{$odp->id}")->assertSessionHas('notice');
+        $this->assertModelExists($odp);
         $this->actingAs($this->userIn($area, Role::AdminArea))->delete("/odps/{$odp->id}")->assertRedirect();
         $this->assertModelMissing($odp);
     }

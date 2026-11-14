@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useApproval } from '@/composables/useApproval';
 import CoreSplices from '@/components/map/CoreSplices.vue';
 import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import StatusBadge from '@/components/map/StatusBadge.vue';
@@ -25,6 +26,7 @@ const emit = defineEmits<{
 const joint = computed(() => props.detail.joint);
 const typeLabel = computed(() => jointTypes[joint.value.type]?.label ?? 'Joint');
 const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destination=${joint.value.lat},${joint.value.lng}`);
+const { needsApproval, deleteLabel } = useApproval();
 </script>
 
 <template>
@@ -96,7 +98,9 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
         <div class="flex flex-wrap gap-2">
             <Button as="a" :href="navUrl" target="_blank" variant="outline" size="sm"><Navigation class="size-4" /> Navigasi</Button>
             <Button v-if="canEdit" variant="outline" size="sm" @click="emit('edit')"><Pencil class="size-4" /> Edit</Button>
-            <Button v-if="canDelete" variant="destructive" size="sm" @click="emit('delete')"><Trash2 class="size-4" /> Hapus</Button>
+            <Button v-if="canDelete || needsApproval" variant="destructive" size="sm" @click="emit('delete')"
+                ><Trash2 class="size-4" /> {{ deleteLabel }}</Button
+            >
         </div>
     </div>
 </template>

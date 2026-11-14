@@ -110,6 +110,16 @@ trait LogsActivity
     }
 
     /**
+     * What deleting the record would remove, for previewing a delete request.
+     *
+     * @return array<string, array{0: mixed, 1: null}>
+     */
+    public function activityDeletePreview(): array
+    {
+        return $this->activitySnapshot();
+    }
+
+    /**
      * What the record held when it was deleted, as [column => [value, null]].
      *
      * @return array<string, array{0: mixed, 1: null}>

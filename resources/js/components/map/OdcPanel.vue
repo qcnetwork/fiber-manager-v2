@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useApproval } from '@/composables/useApproval';
 import CoreSplices from '@/components/map/CoreSplices.vue';
 import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import StatusBadge from '@/components/map/StatusBadge.vue';
@@ -31,6 +32,7 @@ const navUrl = computed(() => `https://www.google.com/maps/dir/?api=1&destinatio
 // Cores ending on the splitter inputs, and straight on output ports.
 const inputs = computed(() => (props.detail.core_terminations ?? []).filter((t) => t.kind === 'input'));
 const outputCore = (port: number) => (props.detail.core_terminations ?? []).find((t) => t.kind === 'output' && t.port === port);
+const { needsApproval, deleteLabel } = useApproval();
 </script>
 
 <template>
@@ -143,7 +145,9 @@ const outputCore = (port: number) => (props.detail.core_terminations ?? []).find
         <div class="flex flex-wrap gap-2">
             <Button as="a" :href="navUrl" target="_blank" variant="outline" size="sm"><Navigation class="size-4" /> Navigasi</Button>
             <Button v-if="canEdit" variant="outline" size="sm" @click="emit('edit')"><Pencil class="size-4" /> Edit</Button>
-            <Button v-if="canDelete" variant="destructive" size="sm" @click="emit('delete')"><Trash2 class="size-4" /> Hapus</Button>
+            <Button v-if="canDelete || needsApproval" variant="destructive" size="sm" @click="emit('delete')"
+                ><Trash2 class="size-4" /> {{ deleteLabel }}</Button
+            >
         </div>
     </div>
 </template>
