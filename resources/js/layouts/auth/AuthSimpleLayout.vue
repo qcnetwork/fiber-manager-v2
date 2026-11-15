@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
-import { Link } from '@inertiajs/vue3';
+import type { SharedData } from '@/types';
+import { Link, usePage } from '@inertiajs/vue3';
 
 defineProps<{
     title?: string;
     description?: string;
 }>();
+
+const appName = usePage<SharedData>().props.name;
 </script>
 
 <template>
@@ -17,7 +20,8 @@ defineProps<{
                         <div class="mb-1 flex size-20 items-center justify-center">
                             <AppLogoIcon class="size-20 drop-shadow-md" />
                         </div>
-                        <span class="sr-only">{{ title }}</span>
+                        <span class="text-2xl font-bold tracking-tight text-[#0647bd] dark:text-blue-400">{{ appName }}</span>
+                        <span class="-mt-1 text-xs text-muted-foreground">Peta jaringan FTTH QCNET</span>
                     </Link>
                     <div class="space-y-2 text-center">
                         <h1 class="text-xl font-medium">{{ title }}</h1>
