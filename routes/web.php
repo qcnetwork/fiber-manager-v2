@@ -42,6 +42,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
+    Route::inertia('bantuan', 'Help')->name('help');
+
     Route::get('map', [MapController::class, 'index'])->name('map');
     Route::get('map/nearest', [MapController::class, 'nearest'])->name('map.nearest');
 
