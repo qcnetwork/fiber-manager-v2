@@ -1,7 +1,7 @@
 {
-    "name": "Aplikasi ODP — QCNET",
-    "short_name": "Aplikasi ODP",
-    "description": "Pencatatan ODC, ODP, dan pelanggan berbasis peta",
+    "name": "QC FiberMap",
+    "short_name": "QC FiberMap",
+    "description": "Peta jaringan fiber (FTTH) QCNET: POP, ODC, ODP, kabel, dan pelanggan",
     "lang": "id",
     "start_url": "/",
     "scope": "/",

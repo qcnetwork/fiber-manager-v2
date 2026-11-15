@@ -1,6 +1,6 @@
-# Fiber Manager v2
+# QC FiberMap
 
-Aplikasi web untuk mencatat jaringan FTTH (OLT → ODC → ODP → pelanggan) di atas peta, dipakai kantor dan teknisi lapangan, serta tim sales untuk cek coverage calon pelanggan.
+QC FiberMap (repo `fiber-manager-v2`) adalah aplikasi web untuk mencatat jaringan FTTH (OLT → ODC → ODP → pelanggan) di atas peta, dipakai kantor dan teknisi lapangan, serta tim sales untuk cek coverage calon pelanggan.
 
 Dibangun dengan Laravel 13, Inertia + Vue 3 (TypeScript), Tailwind, dan Leaflet/OpenStreetMap.
 

@@ -1,5 +1,5 @@
 ===============================================================================
-  APLIKASI ODP (fiber-manager-v2) - PANDUAN DEPLOY KE UBUNTU
+  QC FIBERMAP (fiber-manager-v2) - PANDUAN DEPLOY KE UBUNTU
 ===============================================================================
 
 Perkiraan beban: +/- 30 pengguna, ribuan aset (ODC/ODP/joint/kabel/pelanggan)
@@ -171,7 +171,7 @@ Tempel isi .pub di GitHub: repo > Settings > Deploy keys > Add deploy key
 
 Isi minimal:
 
-  APP_NAME="Aplikasi ODP"
+  APP_NAME="QC FiberMap"
   APP_ENV=production
   APP_DEBUG=false
   APP_URL=https://odp.qcnetwork.net

@@ -1,6 +1,6 @@
 // Service worker: makes the app installable and shows an offline page when the network is gone.
 // Data (Inertia/JSON requests, photos, map tiles) is never cached - it must always be live.
-const CACHE = 'aplikasi-odp-v1';
+const CACHE = 'qc-fibermap-v1';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE = [OFFLINE_URL, '/icon-192.png', '/logo.svg'];
 
