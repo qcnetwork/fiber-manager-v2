@@ -1,0 +1,473 @@
+===============================================================================
+  APLIKASI ODP (fiber-manager-v2) - PANDUAN DEPLOY KE UBUNTU
+===============================================================================
+
+Perkiraan beban: +/- 30 pengguna, ribuan aset (ODC/ODP/joint/kabel/pelanggan)
+dan foto.
+
+Isi:
+  1. System requirement
+  2. Persiapan server
+  3. Instal software
+  4. Database
+  5. Ambil kode aplikasi
+  6. Konfigurasi .env
+  7. Instal dependensi dan build
+  8. Pindahkan data dari server lama (Windows/XAMPP)
+  9. Hak akses folder
+ 10. Nginx
+ 11. HTTPS (Let's Encrypt)
+ 12. Cron (scheduler: backup otomatis dan pembersihan log)
+ 13. Backup ke tempat lain
+ 14. Cek setelah deploy
+ 15. Update aplikasi (deploy berikutnya)
+ 16. Masalah yang sering terjadi
+
+Ganti nilai contoh berikut sesuai milik Anda:
+  odp.qcnetwork.net  -> domain/subdomain aplikasi
+  /var/www/aplikasi-odp -> folder aplikasi
+  PASSWORD_DB        -> password database (buat yang kuat)
+
+
+===============================================================================
+1. SYSTEM REQUIREMENT
+===============================================================================
+
+Spesifikasi server (VPS):
+
+                 Minimum          Disarankan
+  CPU            1 vCPU           2 vCPU
+  RAM            2 GB             4 GB
+  Disk           25 GB SSD        50 GB SSD
+  OS             Ubuntu 22.04     Ubuntu 24.04 LTS
+
+  - Database saat ini sangat kecil (+/- 3 MB). Beban terberat adalah olah
+    foto saat upload serta impor/ekspor Excel/KML; 2 vCPU / 4 GB longgar.
+  - Foto: +/- 175 KB per foto (850 foto = 147 MB). 5.000 aset x 3 foto
+    = +/- 2,5-3 GB, ditambah backup. 50 GB cukup lega.
+  - Pilih lokasi data center Indonesia (Jakarta) agar peta cepat di lapangan.
+
+Software:
+  - Nginx
+  - PHP 8.3 atau 8.4 (PHP-FPM). Laravel 13 butuh minimal PHP 8.3.
+    Ekstensi: gd, zip, mysql (pdo_mysql), mbstring, xml, curl, bcmath,
+    intl, fileinfo, opcache. (exif opsional)
+  - MariaDB 10.11+ atau MySQL 8, beserta client mysqldump (dipakai backup)
+  - Composer 2
+  - Node.js 22 + npm (hanya untuk build tampilan; boleh build di PC lalu
+    upload folder public/build)
+  - Git
+  - Tidak perlu Redis atau queue worker (aplikasi tidak memakai job latar).
+
+Wajib:
+  - Domain/subdomain yang mengarah ke IP server.
+  - HTTPS. Tanpa HTTPS, browser memblokir GPS / "Lokasi saya", tempel foto
+    dari clipboard, dan "Install aplikasi" di HP.
+  - Server bisa mengakses internet keluar: cek coverage memakai layanan rute
+    publik https://routing.openstreetmap.de (bisa diganti lewat ROUTING_URL).
+  - Cron untuk scheduler Laravel (backup otomatis + pembersihan log).
+  - Backup database DAN folder foto ke tempat lain (bagian 13).
+
+
+===============================================================================
+2. PERSIAPAN SERVER
+===============================================================================
+
+Login sebagai root (atau user sudo), lalu:
+
+  sudo apt update && sudo apt upgrade -y
+  sudo timedatectl set-timezone Asia/Jakarta
+
+Buat user untuk deploy (opsional tapi disarankan):
+
+  sudo adduser deploy
+  sudo usermod -aG sudo,www-data deploy
+
+Firewall: buka SSH, HTTP, HTTPS saja (database tidak dibuka ke luar):
+
+  sudo ufw allow OpenSSH
+  sudo ufw allow 'Nginx Full'      # jalankan setelah Nginx terpasang
+  sudo ufw enable
+
+
+===============================================================================
+3. INSTAL SOFTWARE
+===============================================================================
+
+Ubuntu 24.04 sudah membawa PHP 8.3:
+
+  sudo apt install -y nginx mariadb-server mariadb-client git unzip curl \
+    php8.3-fpm php8.3-cli php8.3-gd php8.3-zip php8.3-mysql php8.3-mbstring \
+    php8.3-xml php8.3-curl php8.3-bcmath php8.3-intl php8.3-opcache
+
+(Ubuntu 22.04: tambahkan dulu PPA "sudo add-apt-repository ppa:ondrej/php"
+lalu sudo apt update, perintah di atas sama.)
+
+Composer:
+
+  curl -sS https://getcomposer.org/installer | php
+  sudo mv composer.phar /usr/local/bin/composer
+
+Node.js 22 (bila build dilakukan di server):
+
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+  sudo apt install -y nodejs
+
+Batas upload PHP (foto maks. 8 MB, file impor KML/KMZ/Excel maks. 30 MB).
+Edit /etc/php/8.3/fpm/php.ini:
+
+  upload_max_filesize = 32M
+  post_max_size = 40M
+  memory_limit = 512M
+  max_execution_time = 120
+
+  sudo systemctl restart php8.3-fpm
+
+
+===============================================================================
+4. DATABASE
+===============================================================================
+
+  sudo mysql_secure_installation
+
+  sudo mysql
+    CREATE DATABASE aplikasi_odp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CREATE USER 'aplikasi_odp'@'localhost' IDENTIFIED BY 'PASSWORD_DB';
+    GRANT ALL PRIVILEGES ON aplikasi_odp.* TO 'aplikasi_odp'@'localhost';
+    FLUSH PRIVILEGES;
+    EXIT;
+
+Biarkan MariaDB hanya mendengar localhost (bawaan Ubuntu: bind-address =
+127.0.0.1). Jangan buka port 3306 ke internet.
+
+
+===============================================================================
+5. AMBIL KODE APLIKASI
+===============================================================================
+
+Repo qcnetwork/fiber-manager-v2 privat, jadi server butuh akses baca.
+Cara termudah: deploy key.
+
+  sudo mkdir -p /var/www/aplikasi-odp
+  sudo chown deploy:www-data /var/www/aplikasi-odp
+  su - deploy
+  ssh-keygen -t ed25519 -C "deploy aplikasi-odp" -f ~/.ssh/id_ed25519 -N ""
+  cat ~/.ssh/id_ed25519.pub
+
+Tempel isi .pub di GitHub: repo > Settings > Deploy keys > Add deploy key
+(read-only). Lalu:
+
+  git clone git@github.com:qcnetwork/fiber-manager-v2.git /var/www/aplikasi-odp
+  cd /var/www/aplikasi-odp
+  git checkout main
+
+
+===============================================================================
+6. KONFIGURASI .env
+===============================================================================
+
+  cp .env.example .env
+  nano .env
+
+Isi minimal:
+
+  APP_NAME="Aplikasi ODP"
+  APP_ENV=production
+  APP_DEBUG=false
+  APP_URL=https://odp.qcnetwork.net
+  APP_LOCALE=id
+
+  LOG_LEVEL=warning
+
+  DB_CONNECTION=mariadb
+  DB_HOST=127.0.0.1
+  DB_PORT=3306
+  DB_DATABASE=aplikasi_odp
+  DB_USERNAME=aplikasi_odp
+  DB_PASSWORD=PASSWORD_DB
+
+  SESSION_DRIVER=database
+  SESSION_SECURE_COOKIE=true
+  CACHE_STORE=database
+  QUEUE_CONNECTION=database
+  FILESYSTEM_DISK=local
+
+  # Cek coverage
+  COVERAGE_RADIUS=250
+  ROUTING_URL=https://routing.openstreetmap.de/routed-foot
+
+  # Backup otomatis (lihat config/backup.php)
+  BACKUP_TIMEZONE=Asia/Jakarta
+  BACKUP_INTERVAL_HOURS=24
+  BACKUP_KEEP_DAYS=30
+  BACKUP_KEEP_MIN=7
+  BACKUP_MYSQLDUMP=/usr/bin/mysqldump
+  # BACKUP_COPY_TO=/mnt/backup-lain/aplikasi-odp
+
+Kemudian buat APP_KEY baru (HANYA saat instalasi pertama):
+
+  php artisan key:generate
+
+Lindungi file .env:
+
+  chmod 640 .env
+
+
+===============================================================================
+7. INSTAL DEPENDENSI DAN BUILD
+===============================================================================
+
+  cd /var/www/aplikasi-odp
+  composer install --no-dev --optimize-autoloader
+  npm ci
+  npm run build
+
+(Bila build dilakukan di PC: jalankan "npm ci && npm run build" di PC,
+lalu salin folder public/build ke server. Node tidak perlu di server.)
+
+
+===============================================================================
+8. PINDAHKAN DATA DARI SERVER LAMA (WINDOWS/XAMPP)
+===============================================================================
+
+A. Di server lama (D:\AplikasiOdp), buat backup database terbaru:
+
+     C:\php\php.exe artisan backup:database
+
+   File-nya ada di storage\app\backup\otomatis\backup-aplikasi_odp-*.sql.gz
+
+B. Salin ke server baru (dari PC, misalnya dengan WinSCP atau scp):
+     - file backup .sql.gz terbaru
+     - folder D:\AplikasiOdp\storage\app\photos  (SEMUA foto aset)
+
+   Contoh dengan scp dari PowerShell/Git Bash:
+     scp storage/app/backup/otomatis/backup-aplikasi_odp-XXXX.sql.gz deploy@IP_SERVER:/tmp/
+     scp -r storage/app/photos deploy@IP_SERVER:/tmp/photos
+
+C. Di server baru, impor database:
+
+     gunzip -c /tmp/backup-aplikasi_odp-XXXX.sql.gz | mysql -u aplikasi_odp -p aplikasi_odp
+
+D. Pindahkan foto ke tempatnya:
+
+     mkdir -p /var/www/aplikasi-odp/storage/app/photos
+     cp -a /tmp/photos/. /var/www/aplikasi-odp/storage/app/photos/
+
+E. Jalankan migrasi (hanya menambah tabel/kolom yang belum ada; data aman):
+
+     cd /var/www/aplikasi-odp
+     php artisan migrate --force
+
+   JANGAN jalankan migrate:fresh, migrate:refresh, atau db:seed di server
+   produksi - itu menghapus seluruh data.
+
+F. Akun login ikut terbawa (username dan password tetap sama).
+
+Catatan: hentikan perubahan data di server lama selama pemindahan, supaya
+tidak ada data yang tertinggal. Setelah server baru berjalan, arahkan semua
+pengguna ke alamat baru.
+
+
+===============================================================================
+9. HAK AKSES FOLDER
+===============================================================================
+
+  cd /var/www/aplikasi-odp
+  sudo chown -R deploy:www-data .
+  sudo find . -type f -exec chmod 644 {} \;
+  sudo find . -type d -exec chmod 755 {} \;
+  sudo chmod -R ug+rwx storage bootstrap/cache
+  sudo chmod 640 .env
+
+
+===============================================================================
+10. NGINX
+===============================================================================
+
+Buat /etc/nginx/sites-available/aplikasi-odp :
+
+  server {
+      listen 80;
+      server_name odp.qcnetwork.net;
+      root /var/www/aplikasi-odp/public;
+      index index.php;
+
+      client_max_body_size 40M;
+
+      add_header X-Frame-Options "SAMEORIGIN";
+      add_header X-Content-Type-Options "nosniff";
+
+      charset utf-8;
+
+      location / {
+          try_files $uri $uri/ /index.php?$query_string;
+      }
+
+      # File hasil build punya nama ber-hash: aman disimpan lama di browser
+      location /build/ {
+          expires 1y;
+          add_header Cache-Control "public, immutable";
+          try_files $uri =404;
+      }
+
+      location = /favicon.ico { access_log off; log_not_found off; }
+      location = /robots.txt  { access_log off; log_not_found off; }
+
+      error_page 404 /index.php;
+
+      location ~ ^/index\.php(/|$) {
+          fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+          fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+          include fastcgi_params;
+          fastcgi_hide_header X-Powered-By;
+          fastcgi_read_timeout 120;
+      }
+
+      location ~ /\.(?!well-known).* {
+          deny all;
+      }
+  }
+
+Aktifkan:
+
+  sudo ln -s /etc/nginx/sites-available/aplikasi-odp /etc/nginx/sites-enabled/
+  sudo rm -f /etc/nginx/sites-enabled/default
+  sudo nginx -t && sudo systemctl reload nginx
+
+Foto disimpan di storage/app/photos (di luar folder public) dan hanya
+dikirim lewat aplikasi kepada pengguna yang berhak - tidak perlu konfigurasi
+Nginx tambahan dan jangan buat symlink ke folder itu.
+
+
+===============================================================================
+11. HTTPS (LET'S ENCRYPT)
+===============================================================================
+
+Pastikan DNS domain sudah mengarah ke IP server, lalu:
+
+  sudo apt install -y certbot python3-certbot-nginx
+  sudo certbot --nginx -d odp.qcnetwork.net
+
+Pilih redirect HTTP ke HTTPS. Sertifikat diperpanjang otomatis; cek dengan:
+
+  sudo certbot renew --dry-run
+
+
+===============================================================================
+12. CRON (SCHEDULER)
+===============================================================================
+
+Scheduler menjalankan backup database otomatis (dicek tiap jam, dibuat
+sesuai BACKUP_INTERVAL_HOURS) dan menghapus riwayat aktivitas yang sudah
+lewat masa simpan (harian).
+
+  sudo crontab -u deploy -e
+
+Tambahkan baris:
+
+  * * * * * cd /var/www/aplikasi-odp && php artisan schedule:run >> /dev/null 2>&1
+
+Cek daftar jadwal:
+
+  php artisan schedule:list
+
+
+===============================================================================
+13. BACKUP KE TEMPAT LAIN
+===============================================================================
+
+Backup otomatis aplikasi HANYA berisi database (storage/app/backup/otomatis).
+Foto (storage/app/photos) harus dibackup sendiri. Simpan keduanya di luar
+server ini - bila server rusak/hilang, backup di server yang sama ikut hilang.
+
+Pilihan:
+  a) BACKUP_COPY_TO di .env diarahkan ke disk/mount lain (salinan database).
+  b) rclone ke Google Drive / S3 / storage lain, misalnya tiap malam:
+
+     sudo apt install -y rclone
+     rclone config        # buat remote, misalnya bernama "gdrive"
+
+     crontab -u deploy -e
+       30 1 * * * rclone sync /var/www/aplikasi-odp/storage/app/photos gdrive:aplikasi-odp/photos
+       45 1 * * * rclone sync /var/www/aplikasi-odp/storage/app/backup/otomatis gdrive:aplikasi-odp/db
+
+  c) Fitur snapshot/backup dari penyedia VPS (tambahan, bukan pengganti).
+
+Uji pemulihan sesekali: impor satu file backup ke database percobaan.
+
+
+===============================================================================
+14. CEK SETELAH DEPLOY
+===============================================================================
+
+  cd /var/www/aplikasi-odp
+  php artisan config:cache
+  php artisan route:cache
+  php artisan view:cache
+  php artisan about               # ringkasan: env production, debug off, driver
+
+Coba di browser (HP dan komputer):
+  [ ] Buka https://odp.qcnetwork.net, login dengan akun lama
+  [ ] Peta tampil dengan ODC/ODP/kabel; foto aset bisa dibuka
+  [ ] "Lokasi saya" / GPS jalan (butuh HTTPS)
+  [ ] Upload foto baru berhasil
+  [ ] Cek Coverage menghitung jarak
+  [ ] Ekspor Excel bisa diunduh
+  [ ] Akun teknisi: simpan draft -> kirim ke approval -> admin menyetujui
+  [ ] "Install aplikasi" muncul di HP
+  [ ] Setelah 1 jam, ada file baru di storage/app/backup/otomatis
+
+Log error ada di storage/logs/laravel.log.
+
+
+===============================================================================
+15. UPDATE APLIKASI (DEPLOY BERIKUTNYA)
+===============================================================================
+
+Setelah ada perubahan yang di-merge ke main:
+
+  cd /var/www/aplikasi-odp
+  php artisan down --retry=30
+  php artisan backup:database
+  git pull origin main
+  composer install --no-dev --optimize-autoloader
+  npm ci && npm run build          # atau salin public/build hasil build di PC
+  php artisan migrate --force
+  php artisan config:cache && php artisan route:cache && php artisan view:cache
+  sudo systemctl reload php8.3-fpm
+  php artisan up
+
+Bisa disimpan sebagai skrip, misalnya /home/deploy/deploy.sh.
+
+
+===============================================================================
+16. MASALAH YANG SERING TERJADI
+===============================================================================
+
+- Halaman "500 Server Error":
+    lihat storage/logs/laravel.log; biasanya izin folder storage atau
+    bootstrap/cache (ulangi bagian 9), atau .env salah lalu jalankan
+    php artisan config:clear.
+
+- Upload foto/impor gagal "413 Request Entity Too Large":
+    client_max_body_size di Nginx dan upload_max_filesize/post_max_size di
+    php.ini (bagian 3 dan 10).
+
+- GPS / tempel foto / Install aplikasi tidak muncul:
+    pastikan dibuka lewat https://, bukan http:// atau alamat IP.
+
+- Tampilan tidak berubah setelah update:
+    pastikan npm run build sudah dijalankan (folder public/build baru),
+    lalu muat ulang halaman.
+
+- Langsung keluar lagi setelah login:
+    APP_URL harus sama persis dengan alamat yang dibuka (https://...),
+    SESSION_DOMAIN dibiarkan kosong.
+
+- Backup otomatis tidak terbentuk:
+    cek cron (bagian 12), BACKUP_MYSQLDUMP=/usr/bin/mysqldump, dan izin
+    tulis folder storage/app/backup.
+
+- Cek coverage selalu memakai jarak garis lurus:
+    server tidak bisa menghubungi ROUTING_URL (cek koneksi internet keluar /
+    firewall).
