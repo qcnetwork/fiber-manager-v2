@@ -4,7 +4,7 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { ArrowDownUp, ClipboardCheck, Download, ClipboardPen, History, LayoutGrid, Map, MapPinned, Radar, Users } from '@lucide/vue';
+import { ArrowDownUp, ClipboardCheck, ClipboardPen, Download, History, LayoutGrid, LifeBuoy, Map, MapPinned, Radar, Users } from '@lucide/vue';
 import { computed } from 'vue';
 import { useInstallPrompt } from '@/composables/usePwa';
 import AppLogo from './AppLogo.vue';
@@ -45,6 +45,12 @@ const staffNavItems: NavItem[] = [
     },
 ];
 
+const helpItem: NavItem = {
+    title: 'Bantuan',
+    href: '/bantuan',
+    icon: LifeBuoy,
+};
+
 const activityItem: NavItem = {
     title: 'Riwayat Aktivitas',
     href: '/activity',
@@ -66,12 +72,12 @@ const approvalItem = computed<NavItem>(() => {
 const mainNavItems = computed(() => {
     const role = page.props.auth.user.role;
     if (role === 'sales') return [coverageItem, installRequestItem];
-    if (role === 'viewer') return [...staffNavItems.filter((item) => item.href !== '/data'), installRequestItem]; // export holds customer data
+    if (role === 'viewer') return [...staffNavItems.filter((item) => item.href !== '/data'), installRequestItem, helpItem]; // export holds customer data
     const items =
         role === 'super_admin' || role === 'admin_area'
             ? [...staffNavItems, approvalItem.value, activityItem]
             : [...staffNavItems, approvalItem.value];
-    return [...items, installRequestItem];
+    return [...items, installRequestItem, helpItem];
 });
 
 const adminNavItems: NavItem[] = [
