@@ -28,6 +28,7 @@ export const activityActions: Record<ActivityAction, { label: string; class: str
 
 /** Readable names of the logged columns. */
 export const activityFields: Record<string, string> = {
+    photo: 'Foto',
     code: 'Kode',
     name: 'Nama',
     lat: 'Latitude',

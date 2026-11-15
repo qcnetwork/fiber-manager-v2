@@ -324,9 +324,11 @@ class ChangeRequestService
             if ((! $point || ($resource === 'cables' && ! $path)) && $item->subject_id && ($class = array_search($item->subject_type, ActivityLog::TYPES, true))) {
                 $model = $class::withoutGlobalScopes()->find($item->subject_id);
             }
+            $photo = null;
             if ($resource === 'photos' && $item->subject_id) {
                 // A change to an existing photo: shown at what the photo belongs to.
-                $model = Photo::find($item->subject_id)?->photoable()->withoutGlobalScopes()->first();
+                $photo = Photo::find($item->subject_id);
+                $model = $photo?->photoable()->withoutGlobalScopes()->first();
             } elseif ($resource === 'photos') {
                 $ownerId = $payload['photoable_id'] ?? null;
                 $class = Relation::getMorphedModel((string) ($payload['photoable_type'] ?? ''));
@@ -353,6 +355,7 @@ class ChangeRequestService
                 'payload' => $payload,
                 'preview' => $item->preview,
                 'has_file' => ! empty($item->files),
+                'photo' => $photo?->only('url', 'thumb_url'),
                 'conflict' => $item->conflict(),
                 'editable' => in_array($item->route_name, self::EDITABLE_ROUTES, true),
             ];

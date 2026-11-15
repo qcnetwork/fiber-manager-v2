@@ -458,6 +458,8 @@ class ApprovalTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame(['Depan', 300], [$photo->fresh()->caption, $photo->fresh()->width]);
+        // A new image gets a new URL: browsers keep photo files.
+        $this->assertNotSame($photo->url, $photo->fresh()->url);
         $this->assertSame(0, ChangeRequest::count());
     }
 

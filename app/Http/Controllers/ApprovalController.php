@@ -178,7 +178,7 @@ class ApprovalController extends Controller
                 ...$item->only('id', 'action', 'subject_type', 'subject_id', 'subject_label', 'preview'),
                 // A change to an existing photo: the photo as it is now.
                 'current_photo' => $pending && $item->subject_type === 'photo' && $item->subject_id
-                    ? route('photos.file', ['photo' => $item->subject_id, 'thumb' => 1]) : null,
+                    ? Photo::find($item->subject_id)?->thumb_url : null,
                 'photos' => collect($pending ? ($item->files ?? []) : [])->keys()
                     ->map(fn (int $i) => route('approvals.file', [$item->id, $i]))->all(),
                 'conflict' => $canApprove && $pending ? $item->conflict() : null,
