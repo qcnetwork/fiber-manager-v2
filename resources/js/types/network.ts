@@ -440,6 +440,8 @@ export interface DraftItem {
     editable: boolean;
     /** It carries an uploaded image (a new or replacing photo). */
     has_file: boolean;
+    /** The existing photo a change edits or deletes. */
+    photo: { url: string; thumb_url: string } | null;
 }
 
 /** A stored change opened in its map form: a draft the technician edits, or a batch item an approver edits. */

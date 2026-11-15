@@ -62,13 +62,19 @@ class Photo extends Model
         return ['photoable_type', 'photoable_id', 'user_id', 'path', 'thumb_path', 'width', 'height', 'size'];
     }
 
+    // Browsers keep photo files (they are served as immutable): a replaced image needs a new URL, so the URL names the file.
     protected function url(): Attribute
     {
-        return Attribute::get(fn () => route('photos.file', $this));
+        return Attribute::get(fn () => route('photos.file', [$this, 'v' => $this->version()]));
     }
 
     protected function thumbUrl(): Attribute
     {
-        return Attribute::get(fn () => route('photos.file', [$this, 'thumb' => 1]));
+        return Attribute::get(fn () => route('photos.file', [$this, 'thumb' => 1, 'v' => $this->version()]));
+    }
+
+    private function version(): string
+    {
+        return substr(md5((string) $this->path), 0, 8);
     }
 }

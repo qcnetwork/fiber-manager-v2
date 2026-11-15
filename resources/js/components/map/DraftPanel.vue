@@ -78,20 +78,17 @@ const photoOwner = computed<PhotoOwner | null>(() =>
         </details>
 
         <!-- A change to an existing photo: the photo as it is, and the image replacing it. -->
-        <div
-            v-if="item.kind === 'photo' && (item.subject_id || item.has_file)"
-            class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-        >
-            <a v-if="item.subject_id" :href="route('photos.file', { photo: item.subject_id })" target="_blank" rel="noopener">
+        <div v-if="item.kind === 'photo' && (item.photo || item.has_file)" class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <a v-if="item.photo" :href="item.photo.url" target="_blank" rel="noopener">
                 <img
-                    :src="route('photos.file', { photo: item.subject_id, thumb: 1 })"
+                    :src="item.photo!.thumb_url"
                     alt="Foto sekarang"
                     class="h-20 w-20 rounded-md border object-cover"
                     :class="item.action === 'deleted' && 'opacity-50'"
                     loading="lazy"
                 />
             </a>
-            <span v-if="item.subject_id && item.has_file">→</span>
+            <span v-if="item.photo && item.has_file">→</span>
             <a v-if="item.has_file" :href="route('approvals.file', { changeRequest: item.id, index: 0 })" target="_blank" rel="noopener">
                 <img
                     :src="route('approvals.file', { changeRequest: item.id, index: 0 })"
