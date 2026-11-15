@@ -11,7 +11,7 @@ defineProps<Props>();
 <template>
     <AppLogoIcon class="size-8 shrink-0" />
     <div class="ml-1 grid flex-1 text-left text-sm">
-        <span class="mb-0.5 truncate leading-none font-semibold">Aplikasi ODP</span>
-        <span class="truncate text-xs text-muted-foreground">Pencatatan ODC &amp; ODP</span>
+        <span class="mb-0.5 truncate leading-none font-semibold">QC FiberMap</span>
+        <span class="truncate text-xs text-muted-foreground">Peta jaringan FTTH</span>
     </div>
 </template>
