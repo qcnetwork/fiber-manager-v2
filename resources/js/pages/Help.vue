@@ -129,7 +129,7 @@ const sections: Section[] = [
         icon: Plug,
         points: [
             'Di panel ODP, klik nomor port untuk mengubah status port (kosong/terpakai/rusak) dan data pelanggan yang terhubung.',
-            'Data pelanggan bisa dilengkapi koordinat dan foto. **Pindah ODP/port** untuk memindahkan pelanggan ke port lain.',
+            'Lokasi pelanggan bisa langsung diisi di form port: tombol **GPS** di rumah pelanggan, atau tempel koordinat / link Google Maps. Foto pelanggan ditambahkan dari panel pelanggan. **Pindah ODP/port** untuk memindahkan pelanggan ke port lain.',
             'Port dan sambungan core pada ODP/kabel yang masih draft baru bisa diisi setelah paketnya disetujui.',
             '**Splice sheet** di panel kabel menampilkan daftar sambungan core yang bisa dicetak.',
         ],

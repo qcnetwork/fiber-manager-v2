@@ -125,6 +125,28 @@ class NetworkTest extends TestCase
         $this->assertNull($port->fresh()->customer_id);
     }
 
+    public function test_a_customer_gets_a_location_from_the_port_form()
+    {
+        $area = Area::factory()->create();
+        $port = Odp::factory()->for($area)->create()->ports()->first();
+        $this->actingAs($this->userIn($area));
+
+        // Latitude without longitude is refused.
+        $this->patch("/ports/{$port->id}", ['status' => 'terpakai', 'customer' => ['name' => 'Budi', 'lat' => -7.0429, 'lng' => null]])
+            ->assertSessionHasErrors('customer.lng');
+
+        $this->patch("/ports/{$port->id}", ['status' => 'terpakai', 'customer' => ['name' => 'Budi', 'lat' => -7.0429123, 'lng' => 109.5813456]])
+            ->assertSessionHasNoErrors();
+        $customer = $port->fresh()->customer;
+        $this->assertEqualsWithDelta(-7.0429123, $customer->lat, 1e-7);
+        $this->assertEqualsWithDelta(109.5813456, $customer->lng, 1e-7);
+
+        // Emptying both removes the location again.
+        $this->patch("/ports/{$port->id}", ['status' => 'terpakai', 'customer' => ['name' => 'Budi', 'lat' => null, 'lng' => null]])
+            ->assertSessionHasNoErrors();
+        $this->assertNull($customer->fresh()->lat);
+    }
+
     public function test_a_port_can_be_in_use_by_an_unknown_customer()
     {
         $area = Area::factory()->create();

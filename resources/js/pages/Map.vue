@@ -419,6 +419,7 @@ function onPortSaved() {
     activePort.value = null;
     if (selected.value) select(selected.value.kind, selected.value.id);
     loadFeatures();
+    loadCustomers(); // the customer may have got a location
 }
 
 // ---- Nearest ODP

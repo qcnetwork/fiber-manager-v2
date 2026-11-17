@@ -37,10 +37,12 @@ class OdpPortController extends Controller
             'customer.address' => ['nullable', 'string', 'max:255'],
             'customer.package' => ['nullable', 'string', 'max:255'],
             'customer.ont_sn' => ['nullable', 'string', 'max:50'],
-            'customer.lat' => ['nullable', 'numeric', 'between:-90,90'],
-            'customer.lng' => ['nullable', 'numeric', 'between:-180,180'],
+            'customer.lat' => ['nullable', 'required_with:customer.lng', 'numeric', 'between:-90,90'],
+            'customer.lng' => ['nullable', 'required_with:customer.lat', 'numeric', 'between:-180,180'],
         ], [
             'customer.name.required' => 'Nama pelanggan wajib diisi, atau centang "Pelanggan belum diketahui".',
+            'customer.lat.required_with' => 'Isi latitude dan longitude, atau kosongkan keduanya.',
+            'customer.lng.required_with' => 'Isi latitude dan longitude, atau kosongkan keduanya.',
         ]);
 
         DB::transaction(function () use ($port, $odp, $data, $withCustomer) {
