@@ -176,7 +176,7 @@ const sections: Section[] = [
             'Menu **Approval** menampilkan paket yang menunggu: pengaju, catatan, dan daftar perubahan (klik untuk rincian, foto lama → baru).',
             '**Lihat paket di peta** menampilkan semua perubahan paket di peta tanpa menerapkannya.',
             '**Edit** per item mengubah isi perubahan sebelum disetujui. **Setujui semua** menerapkan seluruh paket, **Tolak** dengan catatan untuk teknisi.',
-            'Admin area hanya memproses paket di areanya. Paket lintas area hanya bisa diproses super admin.',
+            'Admin area hanya memproses paket di areanya. Paket lintas area hanya bisa diproses super admin atau helpdesk.',
         ],
     },
 ];

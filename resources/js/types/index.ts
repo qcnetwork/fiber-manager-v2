@@ -5,6 +5,7 @@ export * from './network';
 export interface Auth {
     user: User;
     isSuperAdmin: boolean;
+    isAdministrator: boolean;
     /** Changes wait for an admin's approval (technicians). */
     needsApproval: boolean;
     canApprove: boolean;
@@ -41,7 +42,7 @@ export interface SharedData {
     };
 }
 
-export type Role = 'super_admin' | 'admin_area' | 'teknisi' | 'viewer' | 'sales';
+export type Role = 'super_admin' | 'helpdesk' | 'admin_area' | 'teknisi' | 'viewer' | 'sales';
 
 export interface User {
     id: number;

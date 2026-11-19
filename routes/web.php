@@ -24,6 +24,7 @@ use App\Http\Controllers\PopController;
 use App\Http\Controllers\SpliceBoxController;
 use App\Http\Controllers\SpliceSheetController;
 use App\Http\Middleware\EnsureNotSales;
+use App\Http\Middleware\EnsureAdministrator;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\HoldForApproval;
 use Illuminate\Support\Facades\Route;
@@ -102,10 +103,13 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
     Route::delete('drafts', [DraftController::class, 'destroyAll'])->name('drafts.destroy-all');
     Route::delete('drafts/{changeRequest}', [DraftController::class, 'destroy'])->name('drafts.destroy');
 
-    Route::middleware(EnsureSuperAdmin::class)->prefix('admin')->name('admin.')->group(function () {
+    Route::middleware(EnsureAdministrator::class)->prefix('admin')->name('admin.')->group(function () {
         Route::resource('areas', AreaController::class)->only(['index', 'store', 'update', 'destroy']);
-        Route::resource('users', UserController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::put('coverage-radius', [CoverageController::class, 'updateRadius'])->name('coverage-radius.update');
+
+        // Helpdesk shares the admin menu but may not manage users.
+        Route::resource('users', UserController::class)->only(['index', 'store', 'update', 'destroy'])
+            ->middleware(EnsureSuperAdmin::class);
     });
 });
 
