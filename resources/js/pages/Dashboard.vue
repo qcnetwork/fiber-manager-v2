@@ -113,6 +113,10 @@ const gapRows = computed(() => [
     { label: 'ODP berstatus rencana / rusak', count: props.gaps.odps_not_active },
 ]);
 
+// Cards keep the roomy padding from sm up; on phones every pixel of width counts.
+const head = 'p-4 pb-2 sm:p-6 sm:pb-2';
+const body = 'p-4 pt-0 sm:p-6 sm:pt-0';
+
 const relative = new Intl.RelativeTimeFormat('id-ID', { numeric: 'auto' });
 function ago(iso: string) {
     const minutes = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
@@ -126,26 +130,28 @@ function ago(iso: string) {
     <Head title="Dashboard" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex flex-1 flex-col gap-4 p-4">
-            <div class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <div class="flex min-w-0 flex-1 flex-col gap-3 p-3 sm:gap-4 sm:p-4">
+            <div class="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6 [&>*]:min-w-0">
                 <Card v-for="tile in tiles" :key="tile.label" class="gap-2">
-                    <CardHeader class="pb-0">
-                        <CardTitle class="text-sm font-medium text-muted-foreground">{{ tile.label }}</CardTitle>
+                    <CardHeader class="p-4 pb-0 sm:p-6 sm:pb-0">
+                        <CardTitle class="truncate text-xs font-medium text-muted-foreground sm:text-sm" :title="tile.label">{{
+                            tile.label
+                        }}</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div class="text-2xl font-semibold tabular-nums sm:text-3xl">{{ tile.value }}</div>
-                        <div v-if="tile.sub" class="mt-1 text-xs text-muted-foreground">{{ tile.sub }}</div>
+                    <CardContent class="p-4 pt-0 sm:p-6 sm:pt-0">
+                        <div class="text-xl font-semibold whitespace-nowrap tabular-nums sm:text-3xl">{{ tile.value }}</div>
+                        <div v-if="tile.sub" class="mt-1 truncate text-xs text-muted-foreground">{{ tile.sub }}</div>
                     </CardContent>
                 </Card>
             </div>
 
-            <div class="grid gap-4 lg:grid-cols-2">
+            <div class="grid gap-3 sm:gap-4 lg:grid-cols-2 [&>*]:min-w-0">
                 <Card>
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">Okupansi port ODP</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <div class="mb-2 flex items-baseline gap-2">
+                    <CardContent :class="body">
+                        <div class="mb-2 flex flex-wrap items-baseline gap-x-2">
                             <span class="text-3xl font-semibold tabular-nums">{{ occupancy }}%</span>
                             <span class="text-sm text-muted-foreground"
                                 >{{ num(stats.used_ports) }} dari {{ num(stats.total_ports) }} port tidak kosong</span
@@ -172,12 +178,16 @@ function ago(iso: string) {
                 </Card>
 
                 <Card>
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">Sebaran isi ODP · {{ num(stats.odps) }} ODP</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent :class="body">
                         <ul class="space-y-2.5 text-sm">
-                            <li v-for="g in fillGroups" :key="g.label" class="grid grid-cols-[9rem_1fr_2.5rem] items-center gap-3">
+                            <li
+                                v-for="g in fillGroups"
+                                :key="g.label"
+                                class="grid grid-cols-[7.5rem_1fr_2.5rem] items-center gap-2 sm:grid-cols-[9rem_1fr_2.5rem] sm:gap-3"
+                            >
                                 <span class="text-muted-foreground">{{ g.label }}</span>
                                 <div class="h-2.5">
                                     <div v-if="g.count" class="h-full rounded-r" :class="g.color" :style="{ width: `${g.width}%` }" />
@@ -189,12 +199,12 @@ function ago(iso: string) {
                 </Card>
 
                 <Card>
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">Pelanggan baru per bulan</CardTitle>
                         <p class="text-sm text-muted-foreground">{{ num(growthTotal) }} pelanggan dalam 12 bulan terakhir</p>
                     </CardHeader>
-                    <CardContent>
-                        <div class="flex h-40 items-end gap-1 border-b sm:gap-2">
+                    <CardContent :class="body">
+                        <div class="flex h-40 items-end gap-1 border-b pt-5 sm:gap-2">
                             <div
                                 v-for="g in growth"
                                 :key="g.month"
@@ -202,7 +212,8 @@ function ago(iso: string) {
                                 :title="`${monthName(g.month, 'long')}: ${num(g.count)} pelanggan`"
                             >
                                 <span
-                                    class="pointer-events-none absolute inset-x-0 text-center text-xs font-medium tabular-nums opacity-0 group-hover:opacity-100"
+                                    v-if="g.count"
+                                    class="pointer-events-none absolute inset-x-0 text-center text-[10px] font-medium tabular-nums sm:text-xs"
                                     :style="{ bottom: `calc(${(g.count / growthMax) * 100}% + 2px)` }"
                                     >{{ g.count }}</span
                                 >
@@ -220,15 +231,15 @@ function ago(iso: string) {
                 </Card>
 
                 <Card>
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">Kelengkapan data</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent :class="body">
                         <ul class="divide-y text-sm">
                             <li v-for="row in gapRows" :key="row.label" class="flex items-center gap-2 py-2">
                                 <CircleAlert v-if="row.count" class="size-4 shrink-0 text-amber-600" />
                                 <CircleCheck v-else class="size-4 shrink-0 text-green-600" />
-                                <span class="flex-1">{{ row.label }}</span>
+                                <span class="min-w-0 flex-1">{{ row.label }}</span>
                                 <span class="font-medium tabular-nums" :class="row.count ? '' : 'text-muted-foreground'">{{
                                     row.count ? num(row.count) : 'Lengkap'
                                 }}</span>
@@ -238,28 +249,48 @@ function ago(iso: string) {
                 </Card>
 
                 <Card>
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">Kabel terpasang · {{ formatLength(stats.cable_m) }}</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent :class="body">
                         <p v-if="!cableByType.length" class="text-sm text-muted-foreground">Belum ada jalur kabel yang digambar.</p>
                         <ul v-else class="divide-y text-sm">
                             <li v-for="row in cableByType" :key="row.type" class="flex items-center gap-3 py-2">
                                 <span class="inline-block h-1.5 w-5 rounded-full" :style="{ background: cableTypes[row.type]?.color }" />
-                                <span class="flex-1">{{ cableTypes[row.type]?.label ?? row.type }}</span>
-                                <span class="text-muted-foreground">{{ row.count }} jalur</span>
-                                <span class="w-20 text-right font-medium tabular-nums">{{ formatLength(row.length_m) }}</span>
+                                <span class="min-w-0 flex-1 truncate">{{ cableTypes[row.type]?.label ?? row.type }}</span>
+                                <span class="shrink-0 text-muted-foreground">{{ row.count }} jalur</span>
+                                <span class="w-20 shrink-0 text-right font-medium tabular-nums">{{ formatLength(row.length_m) }}</span>
                             </li>
                         </ul>
                     </CardContent>
                 </Card>
 
                 <Card v-if="areas">
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">Per area</CardTitle>
                     </CardHeader>
-                    <CardContent class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <CardContent :class="body">
+                        <ul class="divide-y text-sm sm:hidden">
+                            <li v-for="area in areas" :key="area.id" class="py-2.5">
+                                <div class="flex items-baseline justify-between gap-2">
+                                    <span class="min-w-0 truncate font-medium"
+                                        >{{ area.name }} <span class="font-normal text-muted-foreground">({{ area.code }})</span></span
+                                    >
+                                    <span class="shrink-0 tabular-nums">{{ pct(area.used_ports, area.total_ports) }}%</span>
+                                </div>
+                                <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        class="h-full rounded-full"
+                                        :class="barColor(pct(area.used_ports, area.total_ports))"
+                                        :style="{ width: `${pct(area.used_ports, area.total_ports)}%` }"
+                                    />
+                                </div>
+                                <div class="mt-1 text-xs text-muted-foreground tabular-nums">
+                                    {{ area.odcs_count }} ODC · {{ area.odps_count }} ODP · {{ num(area.customers_count) }} pelanggan
+                                </div>
+                            </li>
+                        </ul>
+                        <table class="hidden w-full text-sm sm:table">
                             <thead class="text-left text-muted-foreground">
                                 <tr>
                                     <th class="py-2 font-medium">Area</th>
@@ -296,11 +327,30 @@ function ago(iso: string) {
                 </Card>
 
                 <Card v-if="pops.length">
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">Port PON OLT per POP</CardTitle>
                     </CardHeader>
-                    <CardContent class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <CardContent :class="body">
+                        <ul class="divide-y text-sm sm:hidden">
+                            <li v-for="pop in pops" :key="pop.id" class="py-2.5">
+                                <div class="flex items-baseline justify-between gap-2">
+                                    <span class="min-w-0 truncate font-medium">{{ pop.name }}</span>
+                                    <span class="shrink-0 tabular-nums">{{ pct(pop.used_ports, pop.total_ports) }}%</span>
+                                </div>
+                                <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        class="h-full rounded-full"
+                                        :class="barColor(pct(pop.used_ports, pop.total_ports))"
+                                        :style="{ width: `${pct(pop.used_ports, pop.total_ports)}%` }"
+                                    />
+                                </div>
+                                <div class="mt-1 text-xs text-muted-foreground tabular-nums">
+                                    {{ pop.olts_count }} OLT · {{ pop.used_ports }}/{{ pop.total_ports }} port terpakai
+                                    <span v-if="pop.broken_ports" class="text-violet-700 dark:text-violet-300"> · {{ pop.broken_ports }} rusak</span>
+                                </div>
+                            </li>
+                        </ul>
+                        <table class="hidden w-full text-sm sm:table">
                             <thead class="text-left text-muted-foreground">
                                 <tr>
                                     <th class="py-2 font-medium">POP</th>
@@ -338,18 +388,18 @@ function ago(iso: string) {
                 </Card>
 
                 <Card>
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">ODP hampir / sudah penuh</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent :class="body">
                         <p v-if="!almostFull.length" class="text-sm text-muted-foreground">Tidak ada ODP yang hampir penuh.</p>
                         <ul v-else class="divide-y text-sm">
-                            <li v-for="odp in almostFull" :key="odp.id" class="flex items-center justify-between py-2">
-                                <span>
+                            <li v-for="odp in almostFull" :key="odp.id" class="flex items-center justify-between gap-3 py-2">
+                                <span class="min-w-0 truncate">
                                     <span class="font-medium">{{ odp.code }}</span>
                                     <span class="text-muted-foreground"> · {{ odp.area.code }}</span>
                                 </span>
-                                <span :class="odp.free_ports === 0 ? 'font-semibold text-red-600' : 'text-amber-600'">
+                                <span class="shrink-0" :class="odp.free_ports === 0 ? 'font-semibold text-red-600' : 'text-amber-600'">
                                     {{ odp.free_ports === 0 ? 'Penuh' : `Sisa ${odp.free_ports} port` }}
                                 </span>
                             </li>
@@ -361,10 +411,10 @@ function ago(iso: string) {
                 </Card>
 
                 <Card v-if="activity">
-                    <CardHeader class="pb-2">
+                    <CardHeader :class="head">
                         <CardTitle class="text-base">Aktivitas terbaru</CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent :class="body">
                         <p v-if="!activity.length" class="text-sm text-muted-foreground">Belum ada aktivitas tercatat.</p>
                         <ul v-else class="divide-y text-sm">
                             <li v-for="log in activity" :key="log.id" class="flex items-start gap-2 py-2">
