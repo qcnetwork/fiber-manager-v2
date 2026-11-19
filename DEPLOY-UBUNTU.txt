@@ -22,6 +22,11 @@ Isi:
  14. Cek setelah deploy
  15. Update aplikasi (deploy berikutnya)
  16. Masalah yang sering terjadi
+ 17. Deploy di VM bersama aplikasi lain
+
+Bila VM sudah dipakai aplikasi lain, baca bagian 17 lebih dulu: beberapa
+langkah di bagian 3, 4, 10, 11 dan 12 harus diganti agar aplikasi lain
+tidak terganggu.
 
 Ganti nilai contoh berikut sesuai milik Anda:
   odp.qcnetwork.net  -> domain/subdomain aplikasi
@@ -331,7 +336,7 @@ Buat /etc/nginx/sites-available/aplikasi-odp :
 Aktifkan:
 
   sudo ln -s /etc/nginx/sites-available/aplikasi-odp /etc/nginx/sites-enabled/
-  sudo rm -f /etc/nginx/sites-enabled/default
+  sudo rm -f /etc/nginx/sites-enabled/default    # HANYA di server khusus (lihat bagian 17)
   sudo nginx -t && sudo systemctl reload nginx
 
 Foto disimpan di storage/app/photos (di luar folder public) dan hanya
@@ -471,3 +476,169 @@ Bisa disimpan sebagai skrip, misalnya /home/deploy/deploy.sh.
 - Cek coverage selalu memakai jarak garis lurus:
     server tidak bisa menghubungi ROUTING_URL (cek koneksi internet keluar /
     firewall).
+
+
+===============================================================================
+17. DEPLOY DI VM BERSAMA APLIKASI LAIN
+===============================================================================
+
+Prinsipnya: QC FiberMap punya domain, folder, database, proses PHP-FPM dan
+cron SENDIRI, dan TIDAK mengubah setting global (php.ini, versi PHP default,
+situs default web server) yang dipakai aplikasi lain.
+
+17.1 Cek isi VM dulu
+--------------------
+
+  nginx -v; apache2 -v          # web server yang sudah dipakai
+  ls /etc/php/                  # versi PHP yang terpasang
+  mysql --version               # MariaDB / MySQL
+  sudo ss -tlnp                 # port yang sudah terpakai
+  free -h; nproc; df -h         # sisa RAM, CPU, disk
+
+Kebutuhan tambahan QC FiberMap (+/- 30 pengguna): sekitar 1-2 GB RAM, dan
+disk cukup untuk foto (lihat ukuran storage/app/photos di server lama)
+ditambah backup dan ruang tumbuh.
+
+17.2 Domain: subdomain, bukan subfolder
+---------------------------------------
+
+Pakai subdomain sendiri, mis. odp.qcnetwork.net (DNS A ke IP VM).
+JANGAN dipasang di subfolder (domainlain.com/odp): aset build, service
+worker (PWA) dan routing aplikasi mengasumsikan berjalan di root domain.
+
+17.3 PHP 8.3 berdampingan dengan versi lain
+-------------------------------------------
+
+Aplikasi butuh PHP 8.3 atau lebih baru. Bila aplikasi lain memakai versi
+lain (mis. 7.4 / 8.1), pasang 8.3 di sampingnya - jangan mengganti yang ada:
+
+  sudo add-apt-repository ppa:ondrej/php && sudo apt update
+  sudo apt install -y php8.3-fpm php8.3-cli php8.3-gd php8.3-zip \
+    php8.3-mysql php8.3-mbstring php8.3-xml php8.3-curl php8.3-bcmath \
+    php8.3-intl php8.3-opcache
+
+JANGAN:
+  - menjalankan update-alternatives untuk mengganti "php" default;
+  - mengubah php.ini global (batas upload diatur per pool, di bawah).
+
+Bila VM punya beberapa versi PHP, tulis versinya lengkap di SEMUA perintah
+panduan ini, mis.:
+
+  php8.3 artisan migrate --force
+  php8.3 /usr/local/bin/composer install --no-dev --optimize-autoloader
+
+Pool PHP-FPM khusus, buat /etc/php/8.3/fpm/pool.d/qcfibermap.conf :
+
+  [qcfibermap]
+  user = deploy
+  group = deploy
+  listen = /run/php/qcfibermap.sock
+  listen.owner = www-data
+  listen.group = www-data
+  pm = dynamic
+  pm.max_children = 10
+  pm.start_servers = 2
+  pm.min_spare_servers = 2
+  pm.max_spare_servers = 4
+  php_admin_value[upload_max_filesize] = 32M
+  php_admin_value[post_max_size] = 40M
+  php_admin_value[memory_limit] = 512M
+  php_admin_value[max_execution_time] = 120
+
+  sudo php-fpm8.3 -t && sudo systemctl restart php8.3-fpm
+
+Karena pool berjalan sebagai user deploy, hak akses di bagian 9 tetap
+berlaku apa adanya.
+
+17.4 Web server: tambah satu situs saja
+---------------------------------------
+
+Nginx (bila VM sudah memakai Nginx):
+  - Buat /etc/nginx/sites-available/aplikasi-odp seperti bagian 10, dengan
+    perubahan:
+        fastcgi_pass unix:/run/php/qcfibermap.sock;
+  - JANGAN pakai "default_server" pada listen.
+  - JANGAN hapus /etc/nginx/sites-enabled/default (bisa jadi dipakai
+    aplikasi lain).
+  - client_max_body_size 40M cukup di dalam blok server ini saja.
+  - Selalu tes sebelum reload - konfigurasi yang salah mematikan SEMUA situs:
+
+      sudo ln -s /etc/nginx/sites-available/aplikasi-odp /etc/nginx/sites-enabled/
+      sudo nginx -t && sudo systemctl reload nginx
+
+Apache (bila VM sudah memakai Apache):
+  JANGAN memasang Nginx juga (berebut port 80/443). Buat VirtualHost baru,
+  /etc/apache2/sites-available/aplikasi-odp.conf :
+
+  <VirtualHost *:80>
+      ServerName odp.qcnetwork.net
+      DocumentRoot /var/www/aplikasi-odp/public
+
+      <Directory /var/www/aplikasi-odp/public>
+          AllowOverride All
+          Require all granted
+      </Directory>
+
+      <FilesMatch \.php$>
+          SetHandler "proxy:unix:/run/php/qcfibermap.sock|fcgi://localhost"
+      </FilesMatch>
+
+      LimitRequestBody 41943040
+      ErrorLog ${APACHE_LOG_DIR}/aplikasi-odp-error.log
+      CustomLog ${APACHE_LOG_DIR}/aplikasi-odp-access.log combined
+  </VirtualHost>
+
+  sudo a2enmod proxy_fcgi setenvif rewrite headers
+  sudo a2ensite aplikasi-odp
+  sudo apachectl configtest && sudo systemctl reload apache2
+
+  (File public/.htaccess bawaan Laravel menangani routing.)
+
+17.5 HTTPS
+----------
+
+Minta sertifikat HANYA untuk domain ini, sertifikat aplikasi lain tidak
+tersentuh:
+
+  sudo certbot --nginx -d odp.qcnetwork.net      # atau: --apache
+
+17.6 Database di server yang sudah ada
+--------------------------------------
+
+  - Buat database dan user khusus seperti bagian 4. Jangan memakai root
+    atau user milik aplikasi lain.
+  - Disarankan MariaDB 10.6+ / MySQL 8.
+  - Bila database ada di VM lain: isi DB_HOST dengan IP-nya dan buat user
+    dengan @'IP-VM-APLIKASI' (bukan @'localhost'); buka port 3306 hanya
+    untuk IP tersebut.
+  - BACKUP_MYSQLDUMP harus mengarah ke mysqldump yang ada di VM aplikasi
+    (sudo apt install mariadb-client bila belum ada).
+
+17.7 Cron, backup, update
+-------------------------
+
+  - Cron di crontab user deploy, dengan PHP 8.3 ditulis lengkap:
+
+      * * * * * cd /var/www/aplikasi-odp && /usr/bin/php8.3 artisan schedule:run >> /dev/null 2>&1
+
+  - Bila VM sudah punya sistem backup, ikutkan:
+      /var/www/aplikasi-odp/.env
+      /var/www/aplikasi-odp/storage/app/photos
+      /var/www/aplikasi-odp/storage/app/backup
+  - Skrip update (bagian 15): ganti "php" dengan "php8.3". Reload
+    php8.3-fpm hanya memuat ulang PHP 8.3, aplikasi dengan versi PHP lain
+    tidak terpengaruh (tetapi aplikasi lain yang juga memakai 8.3 ikut
+    di-reload - aman, tanpa putus koneksi).
+
+17.8 Ringkasan perbedaan dengan server khusus
+---------------------------------------------
+
+  Bagian 3   hanya PHP 8.3 (berdampingan) dan Composer; web server dan
+             database memakai yang sudah ada; batas upload di pool, bukan
+             php.ini
+  Bagian 4   database dan user baru di server yang ada
+  Bagian 10  situs baru, socket qcfibermap.sock, tanpa default_server,
+             jangan hapus situs default
+  Bagian 11  certbot -d untuk domain ini saja
+  Bagian 12  /usr/bin/php8.3 di cron
+  Semua      "php" -> "php8.3" bila VM punya beberapa versi PHP
