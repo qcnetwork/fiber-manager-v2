@@ -45,6 +45,7 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $user,
                 'isSuperAdmin' => (bool) $user?->isSuperAdmin(),
+                'isAdministrator' => (bool) $user?->isAdministrator(),
                 'needsApproval' => (bool) $user?->needsApproval(),
                 'canApprove' => (bool) $user?->canApprove(),
             ],

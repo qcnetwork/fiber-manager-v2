@@ -108,6 +108,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Super admins and helpdesk manage areas (POPs) and the coverage radius; only super admins manage users.
+     */
+    public function isAdministrator(): bool
+    {
+        return in_array($this->role, [Role::SuperAdmin, Role::Helpdesk], true);
+    }
+
+    /**
      * The only super admin left: deleting or demoting them would leave nobody to manage users and areas.
      */
     public function isLastSuperAdmin(): bool
@@ -128,7 +136,7 @@ class User extends Authenticatable
      */
     public function canEditNetwork(): bool
     {
-        return in_array($this->role, [Role::SuperAdmin, Role::AdminArea, Role::Teknisi], true);
+        return in_array($this->role, [Role::SuperAdmin, Role::Helpdesk, Role::AdminArea, Role::Teknisi], true);
     }
 
     /**
@@ -144,7 +152,7 @@ class User extends Authenticatable
      */
     public function canApprove(): bool
     {
-        return in_array($this->role, [Role::SuperAdmin, Role::AdminArea], true);
+        return in_array($this->role, [Role::SuperAdmin, Role::Helpdesk, Role::AdminArea], true);
     }
 
     /**
@@ -152,6 +160,6 @@ class User extends Authenticatable
      */
     public function canDeleteNetwork(): bool
     {
-        return in_array($this->role, [Role::SuperAdmin, Role::AdminArea], true);
+        return in_array($this->role, [Role::SuperAdmin, Role::Helpdesk, Role::AdminArea], true);
     }
 }

@@ -119,7 +119,7 @@ function destroy(user: User) {
                             </NativeSelect>
                             <InputError :message="form.errors.role" />
                         </div>
-                        <div v-if="form.role !== 'super_admin'" class="grid gap-1.5">
+                        <div v-if="form.role !== 'super_admin' && form.role !== 'helpdesk'" class="grid gap-1.5">
                             <Label for="area_id">Area</Label>
                             <NativeSelect id="area_id" v-model="form.area_id">
                                 <option :value="null">Semua area</option>

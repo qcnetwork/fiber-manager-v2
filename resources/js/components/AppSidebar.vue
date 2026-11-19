@@ -74,13 +74,13 @@ const mainNavItems = computed(() => {
     if (role === 'sales') return [coverageItem, installRequestItem];
     if (role === 'viewer') return [...staffNavItems.filter((item) => item.href !== '/data'), installRequestItem, helpItem]; // export holds customer data
     const items =
-        role === 'super_admin' || role === 'admin_area'
+        role === 'super_admin' || role === 'helpdesk' || role === 'admin_area'
             ? [...staffNavItems, approvalItem.value, activityItem]
             : [...staffNavItems, approvalItem.value];
     return [...items, installRequestItem, helpItem];
 });
 
-const adminNavItems: NavItem[] = [
+const allAdminNavItems: NavItem[] = [
     {
         title: 'Area / POP',
         href: '/admin/areas',
@@ -92,6 +92,11 @@ const adminNavItems: NavItem[] = [
         icon: Users,
     },
 ];
+
+// Helpdesk gets the same admin menu as super admins, except user management.
+const adminNavItems = computed(() =>
+    page.props.auth.isSuperAdmin ? allAdminNavItems : allAdminNavItems.filter((item) => item.href !== '/admin/users'),
+);
 </script>
 
 <template>
@@ -110,7 +115,7 @@ const adminNavItems: NavItem[] = [
 
         <SidebarContent>
             <NavMain :items="mainNavItems" />
-            <NavMain v-if="page.props.auth.isSuperAdmin" :items="adminNavItems" label="Administrasi" />
+            <NavMain v-if="page.props.auth.isAdministrator" :items="adminNavItems" label="Administrasi" />
         </SidebarContent>
 
         <SidebarFooter>

@@ -76,7 +76,7 @@ class UserController extends Controller
             'password' => [$user ? 'nullable' : 'required', Password::defaults()],
         ]);
 
-        if ($data['role'] === Role::SuperAdmin->value) {
+        if (in_array($data['role'], [Role::SuperAdmin->value, Role::Helpdesk->value], true)) {
             $data['area_id'] = null;
         }
 
