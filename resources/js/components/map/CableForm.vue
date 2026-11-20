@@ -11,6 +11,7 @@ import type { Area, Cable, CableEndpoint, CableStopDraft, CableType, LatLng } fr
 import { useForm } from '@inertiajs/vue3';
 import { LoaderCircle, Undo2, X } from '@lucide/vue';
 import { computed, watch } from 'vue';
+import MapHint from './MapHint.vue';
 
 const props = defineProps<{
     cable: Cable | null;
@@ -107,15 +108,17 @@ const { needsApproval } = useApproval();
             <Button type="button" variant="ghost" size="icon" @click="emit('cancel')"><X class="size-4" /></Button>
         </div>
 
-        <ul class="list-disc space-y-0.5 rounded-md bg-muted p-2 pl-6 text-xs text-muted-foreground">
-            <li>Klik peta untuk menambah titik jalur (ikuti jalan/tiang).</li>
-            <li>
-                Klik di dekat POP/ODC/ODP: pilih disambung ke aset itu atau jadi titik biasa. Aset yang disambung di tengah jalur tercatat sebagai
-                titik sambung yang dilewati.
-            </li>
-            <li>Geser titik untuk memindah (kalau dilepas dekat aset, akan ditanya lagi), klik titik untuk menghapusnya.</li>
-            <li>Untuk menambah titik di tengah kabel, geser atau klik kotak samar di tengah tiap ruas.</li>
-        </ul>
+        <MapHint title="Cara menggambar kabel">
+            <ul class="list-disc space-y-0.5 pl-4">
+                <li>Klik peta untuk menambah titik jalur (ikuti jalan/tiang).</li>
+                <li>
+                    Klik di dekat POP/ODC/ODP: pilih disambung ke aset itu atau jadi titik biasa. Aset yang disambung di tengah jalur tercatat sebagai
+                    titik sambung yang dilewati.
+                </li>
+                <li>Geser titik untuk memindah (kalau dilepas dekat aset, akan ditanya lagi), klik titik untuk menghapusnya.</li>
+                <li>Untuk menambah titik di tengah kabel, geser atau klik kotak samar di tengah tiap ruas.</li>
+            </ul>
+        </MapHint>
 
         <div class="rounded-md border p-3 text-sm">
             <div class="flex items-baseline justify-between">
