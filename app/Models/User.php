@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\Role;
 use App\Models\Concerns\LogsActivity;
+use App\Support\MapLayers;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -55,6 +56,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'role' => Role::class,
+            'preferences' => 'array',
         ];
     }
 
@@ -78,7 +80,7 @@ class User extends Authenticatable
 
     protected function activityIgnored(): array
     {
-        return ['remember_token', 'email_verified_at'];
+        return ['remember_token', 'email_verified_at', 'preferences'];
     }
 
     protected function activityMasked(): array
@@ -100,6 +102,16 @@ class User extends Authenticatable
     public function canAccessArea(int $areaId): bool
     {
         return $this->seesAllAreas() || $this->area_id === $areaId;
+    }
+
+    /**
+     * Layers ticked when this user opens the network map.
+     *
+     * @return array<string, bool|string>
+     */
+    public function mapLayers(): array
+    {
+        return MapLayers::resolve($this->preferences['map_layers'] ?? null);
     }
 
     public function isSuperAdmin(): bool
