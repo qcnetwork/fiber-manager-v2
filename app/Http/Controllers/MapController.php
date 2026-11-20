@@ -35,6 +35,7 @@ class MapController extends Controller
         return Inertia::render('Map', [
             'areas' => $areas->map->only('id', 'code', 'name', 'center_lat', 'center_lng'),
             'coverageRadius' => app(CoverageService::class)->radius(),
+            'mapLayers' => $user->mapLayers(),
             'can' => [
                 'edit' => $user->canEditNetwork(),
                 'delete' => $user->canDeleteNetwork(),

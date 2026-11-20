@@ -15,6 +15,7 @@ import L, {
 } from '@/lib/leaflet';
 import type { CableEndKind, CableLine, CustomerMarker, JointMarker, LatLng, MapItemKind, OdcMarker, OdpMarker, PopMarker } from '@/types';
 import { endLabel, jointTypes } from '@/lib/cables';
+import type { MapLayerPrefs, MapLayerToggle } from '@/lib/mapLayers';
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 type DraftLink = { kind: CableEndKind; id: number };
@@ -44,7 +45,20 @@ const props = defineProps<{
     changeMarks?: { lat: number | null; lng: number | null; path: LatLng[] | null; action: string; label: string }[];
     /** Joint boxes and rosettes in view; only the network map passes them (adds the "Joint/Roset" layer). */
     joints?: JointMarker[];
+    /** Layers ticked when the map opens (the user's Pengaturan → Peta); built-in defaults when absent. */
+    layers?: MapLayerPrefs;
 }>();
+
+const DEFAULT_ON: Record<MapLayerToggle, boolean> = {
+    cables: true,
+    pops: true,
+    odcs: true,
+    odps: true,
+    joints: true,
+    links: false,
+    customers: false,
+    cluster: true,
+};
 
 const emit = defineEmits<{
     bounds: [bbox: string, center: [number, number], zoom: number];
@@ -84,7 +98,8 @@ function readClusterPreference(): boolean {
     }
 }
 
-let clusterOdps = readClusterPreference();
+// The network map starts from the user's setting; pages without one remember the last choice in this browser.
+let clusterOdps = props.layers ? props.layers.cluster : readClusterPreference();
 odpLayer.addLayer(clusterOdps ? odpClusterGroup : odpPlainGroup);
 
 function setClusterOdps(on: boolean) {
@@ -497,26 +512,34 @@ function emitBounds() {
 onMounted(() => {
     map = L.map(el.value!, { center: props.center, zoom: props.zoom });
 
+    // Which layers start ticked: the user's own defaults (Pengaturan → Peta) where the page passes them.
+    const start = (key: MapLayerToggle) => props.layers?.[key] ?? DEFAULT_ON[key];
+
     const layers = baseLayers();
-    layers.Peta.addTo(map);
-    // The straight ODC–ODP guide lines start hidden now that real cable routes are drawn; they stay available in the layer menu.
-    [cableLayer, odcLayer, odpLayer, changeLayer, customerFocusLayer, draftLayer, pickLayer, nearestLayer]
-        .filter((layer) => !(props.hideCables && layer === cableLayer))
-        .forEach((layer) => layer.addTo(map));
+    (props.layers?.base === 'satelit' ? layers.Satelit : layers.Peta).addTo(map);
+    [changeLayer, customerFocusLayer, draftLayer, pickLayer, nearestLayer].forEach((layer) => layer.addTo(map));
+    if (!props.hideCables && start('cables')) cableLayer.addTo(map);
+    if (start('odcs')) odcLayer.addTo(map);
+    if (start('odps')) odpLayer.addTo(map);
+    // The straight ODC–ODP guide lines start hidden by default now that real cable routes are drawn.
+    if (start('links')) linkLayer.addTo(map);
 
     const overlays: Record<string, L.Layer> = props.hideCables
         ? { ODC: odcLayer, ODP: odpLayer, 'Garis bantu': linkLayer }
         : { Kabel: cableLayer, ODC: odcLayer, ODP: odpLayer, 'Garis bantu': linkLayer };
     if (props.pops) {
-        popLayer.addTo(map);
+        if (start('pops')) popLayer.addTo(map);
         overlays.POP = popLayer;
     }
     if (props.joints) {
-        jointLayer.addTo(map);
+        if (start('joints')) jointLayer.addTo(map);
         overlays['Joint/Roset'] = jointLayer;
     }
     // Only pages that pass customers offer the layer (never the sales coverage page).
-    if (props.customers) overlays.Pelanggan = customerLayer;
+    if (props.customers) {
+        if (start('customers')) customerLayer.addTo(map);
+        overlays.Pelanggan = customerLayer;
+    }
     overlays['Kelompokkan ODP'] = clusterToggle;
     if (clusterOdps) clusterToggle.addTo(map);
     L.control.layers(layers, overlays, { position: 'topright' }).addTo(map);

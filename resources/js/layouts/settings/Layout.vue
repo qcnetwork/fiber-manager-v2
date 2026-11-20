@@ -2,10 +2,12 @@
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { type NavItem } from '@/types';
-import { Link } from '@inertiajs/vue3';
+import { type NavItem, type SharedData } from '@/types';
+import { Link, usePage } from '@inertiajs/vue3';
 
-const sidebarNavItems: NavItem[] = [
+const isSales = usePage<SharedData>().props.auth.user.role === 'sales';
+
+const allNavItems: NavItem[] = [
     {
         title: 'Profile',
         href: '/settings/profile',
@@ -18,7 +20,14 @@ const sidebarNavItems: NavItem[] = [
         title: 'Appearance',
         href: '/settings/appearance',
     },
+    {
+        title: 'Peta',
+        href: '/settings/map',
+    },
 ];
+
+// Sales accounts never open the network map.
+const sidebarNavItems = isSales ? allNavItems.filter((item) => item.href !== '/settings/map') : allNavItems;
 
 const currentPath = window.location.pathname;
 </script>

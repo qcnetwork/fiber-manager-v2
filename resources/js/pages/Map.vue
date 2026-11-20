@@ -12,6 +12,7 @@ import JointPanel from '@/components/map/JointPanel.vue';
 import MoveCustomerDialog from '@/components/map/MoveCustomerDialog.vue';
 import NearestPanel from '@/components/map/NearestPanel.vue';
 import NetworkMap from '@/components/map/NetworkMap.vue';
+import type { MapLayerPrefs } from '@/lib/mapLayers';
 import OdcPanel from '@/components/map/OdcPanel.vue';
 import OdpPanel from '@/components/map/OdpPanel.vue';
 import OltForm from '@/components/map/OltForm.vue';
@@ -85,6 +86,7 @@ const props = defineProps<{
     areas: Area[];
     can: { edit: boolean; delete: boolean; chooseArea: boolean };
     coverageRadius: number;
+    mapLayers: MapLayerPrefs;
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Peta Jaringan', href: '/map' }];
@@ -141,9 +143,9 @@ async function loadFeatures(bbox = lastBbox) {
 }
 watch(filters, () => loadFeatures(), { deep: true });
 
-// ---- Customers: off by default and only fetched when zoomed in, since there can be thousands.
+// ---- Customers: off unless the user's map settings say otherwise, and only fetched when zoomed in, since there can be thousands.
 const CUSTOMER_MIN_ZOOM = 15;
-const showCustomers = ref(false);
+const showCustomers = ref(props.mapLayers.customers);
 const customers = ref<CustomerMarker[]>([]);
 const customersTruncated = ref(false);
 const zoom = ref(view.zoom);
@@ -975,6 +977,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         :customer-focus="mode === 'detail' ? customerFocus : null"
                         :center="view.center"
                         :zoom="view.zoom"
+                        :layers="mapLayers"
                         @bounds="onBounds"
                         @customers-toggle="(on) => (showCustomers = on)"
                         @select="onMapSelect"

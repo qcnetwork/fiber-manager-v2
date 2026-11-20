@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Settings\MapSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
+use App\Http\Middleware\EnsureNotSales;
 use App\Http\Controllers\Settings\ProfileController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -18,4 +20,10 @@ Route::middleware('auth')->group(function () {
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/Appearance');
     })->name('appearance');
+
+    // Sales accounts never open the network map.
+    Route::middleware(EnsureNotSales::class)->group(function () {
+        Route::get('settings/map', [MapSettingsController::class, 'edit'])->name('map-settings.edit');
+        Route::put('settings/map', [MapSettingsController::class, 'update'])->name('map-settings.update');
+    });
 });
