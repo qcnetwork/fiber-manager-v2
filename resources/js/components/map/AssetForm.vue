@@ -12,6 +12,7 @@ import { useForm } from '@inertiajs/vue3';
 import { Crosshair, LoaderCircle, X } from '@lucide/vue';
 import { useDebounceFn } from '@vueuse/core';
 import { computed, onMounted, ref, watch } from 'vue';
+import MapHint from './MapHint.vue';
 
 const props = defineProps<{
     kind: AssetKind;
@@ -218,9 +219,9 @@ const { saveLabel } = useApproval();
             <Button type="button" variant="ghost" size="icon" @click="emit('cancel')"><X class="size-4" /></Button>
         </div>
 
-        <p v-if="isNew" class="rounded-md bg-muted p-2 text-xs text-muted-foreground">
+        <MapHint v-if="isNew" title="Cara menentukan lokasi">
             Klik peta atau geser penanda merah untuk menentukan lokasi, atau pakai GPS perangkat.
-        </p>
+        </MapHint>
 
         <div v-if="canChooseArea" class="grid gap-1.5">
             <Label for="area_id">Area</Label>
