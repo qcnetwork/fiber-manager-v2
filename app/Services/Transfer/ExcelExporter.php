@@ -118,7 +118,7 @@ class ExcelExporter
 
         $this->sheet($writer, 'Kabel', ['id', 'kode', 'jenis', 'core', 'core_per_tube', 'status', 'dari', 'ke', 'panjang_m', 'jumlah_titik', 'core_terpakai', 'catatan', 'area'], [7, 18, 12, 8, 13, 10, 18, 18, 11, 12, 13, 30, 12]);
         $inArea(Cable::query())
-            ->with(['from:id,code,name', 'to:id,code,name', 'area:id,code'])
+            ->with(['from', 'to', 'area:id,code'])
             ->withCount(['coreRows as used_cores' => fn ($q) => $q->where('status', CoreStatus::Terpakai)])
             ->orderBy('type')->orderBy('code')->lazy()->each(
                 fn (Cable $cable) => $writer->addRow($this->row([

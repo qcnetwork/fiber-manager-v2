@@ -126,7 +126,10 @@ class CableController extends Controller
 
             if ($data["{$end}_id"]) {
                 $asset = $locate($data["{$end}_type"], $data["{$end}_id"]);
-                $path[$index] = [$asset->lat, $asset->lng];
+                // A customer may have no location yet: the drawn point stays where it is.
+                if ($asset->lat !== null && $asset->lng !== null) {
+                    $path[$index] = [$asset->lat, $asset->lng];
+                }
             }
         }
 

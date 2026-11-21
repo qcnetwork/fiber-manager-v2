@@ -192,6 +192,8 @@ export interface Customer {
     area_id?: number;
     area?: Pick<Area, 'id' | 'code' | 'name'>;
     photos?: Photo[];
+    /** Drop cables running to the house (customer detail only). */
+    cables?: { id: number; code: string | null; type: CableType; cores: number; length_m: number }[];
     /** The port the customer is connected to, with its ODP (customer detail only). */
     port?: {
         id: number;
@@ -244,8 +246,8 @@ export interface NearestOdp {
 }
 
 export type AssetKind = 'odc' | 'odp' | 'joint';
-/** What a cable end can attach to. */
-export type CableEndKind = 'pop' | AssetKind;
+/** What a cable end can attach to (a customer only as the end of a drop cable). */
+export type CableEndKind = 'pop' | AssetKind | 'customer';
 export type MapItemKind = CableEndKind | 'cable' | 'customer';
 /** What a photo can belong to. */
 export type PhotoOwner = CableEndKind | 'customer';

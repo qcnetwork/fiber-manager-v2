@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\PortStatus;
 use App\Models\ActivityLog;
+use App\Models\Cable;
 use App\Models\Customer;
 use App\Models\Odp;
 use App\Models\OdpPort;
@@ -54,7 +55,13 @@ class CustomerController extends Controller
     {
         $customer->load(['area:id,code,name', 'port.odp:id,code,name,lat,lng', 'photos.user:id,name']);
 
-        return response()->json(['customer' => $customer]);
+        return response()->json([
+            'customer' => [
+                ...$customer->toArray(),
+                // Drop cables running to the house.
+                'cables' => Cable::reaching($customer)->orderBy('id')->get(['id', 'code', 'type', 'cores', 'length_m']),
+            ],
+        ]);
     }
 
     public function update(Request $request, Customer $customer): RedirectResponse

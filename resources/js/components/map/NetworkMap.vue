@@ -128,7 +128,8 @@ const pickLayer = L.layerGroup();
 const nearestLayer = L.layerGroup();
 // Customers can number in the thousands: drawn on canvas, and the layer starts switched off.
 const customerLayer = L.layerGroup();
-const customerRenderer = L.canvas({ tolerance: 6 });
+// Same canvas as the cables: with two canvases stacked, the top one swallows every click meant for the other.
+const customerRenderer = cableRenderer;
 const customerFocusLayer = L.layerGroup();
 let myLocation: L.CircleMarker | null = null;
 
@@ -252,6 +253,8 @@ function renderCables() {
 
         if (selected) line.bringToFront();
     }
+    // Customer dots share the canvas; keep them above the lines so they stay clickable where a cable passes.
+    customerLayer.eachLayer((layer) => (layer as L.Path).bringToFront());
 }
 
 /** Pixels from the click within which another cable counts as passing through the same spot. */
@@ -302,6 +305,7 @@ function onCableClick(e: L.LeafletMouseEvent, cable: CableLine) {
 }
 
 const CUSTOMER_COLOR = '#0d9488';
+const customerLabel = (c: { name: string; customer_code: string | null }) => (c.customer_code ? `${c.name} (${c.customer_code})` : c.name);
 
 function renderCustomers() {
     customerLayer.clearLayers();
@@ -326,7 +330,7 @@ function renderCustomers() {
             bubblingMouseEvents: false,
         })
             .bindTooltip(`<b>${escapeHtml(c.name)}</b>${c.customer_code ? '<br>' + escapeHtml(c.customer_code) : ''}`, { direction: 'top' })
-            .on('click', () => emit('select', 'customer', c.id))
+            .on('click', (e) => onAssetClick(e, 'customer', c.id))
             .addTo(customerLayer);
     }
 }
@@ -454,6 +458,8 @@ function assetsNear(point: L.Point): Candidate[] {
     props.odcs.forEach((odc) => consider('odc', odc, odc.code));
     props.odps.forEach((odp) => consider('odp', odp, odp.code));
     props.joints?.forEach((joint) => consider('joint', joint, joint.code));
+    // Customers only while their layer is shown: the end of a drop cable.
+    if (map.hasLayer(customerLayer)) props.customers?.forEach((c) => consider('customer', c, customerLabel(c)));
     return found.sort((a, b) => a.dist - b.dist);
 }
 

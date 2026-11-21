@@ -323,6 +323,7 @@ class MapController extends Controller
             ->where(fn ($q) => $q->where($typeColumn, 'pop')->where($idColumn, $areaId))
             ->orWhere(fn ($q) => $q->where($typeColumn, 'odc')->whereIn($idColumn, Odc::withoutGlobalScopes()->select('id')->where('area_id', $areaId)))
             ->orWhere(fn ($q) => $q->where($typeColumn, 'odp')->whereIn($idColumn, Odp::withoutGlobalScopes()->select('id')->where('area_id', $areaId)))
-            ->orWhere(fn ($q) => $q->where($typeColumn, 'joint')->whereIn($idColumn, SpliceBox::withoutGlobalScopes()->select('id')->where('area_id', $areaId))));
+            ->orWhere(fn ($q) => $q->where($typeColumn, 'joint')->whereIn($idColumn, SpliceBox::withoutGlobalScopes()->select('id')->where('area_id', $areaId)))
+            ->orWhere(fn ($q) => $q->where($typeColumn, 'customer')->whereIn($idColumn, Customer::withoutGlobalScopes()->select('id')->where('area_id', $areaId))));
     }
 }

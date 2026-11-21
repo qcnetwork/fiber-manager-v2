@@ -85,7 +85,7 @@ class KmlExporter
 
         $xml->startElement('Folder');
         $xml->writeElement('name', 'Kabel');
-        $inArea(Cable::query())->with(['from:id,code', 'to:id,code'])->orderBy('type')->orderBy('code')->lazy()->each(fn (Cable $cable) => $this->line($xml, $cable));
+        $inArea(Cable::query())->with(['from', 'to'])->orderBy('type')->orderBy('code')->lazy()->each(fn (Cable $cable) => $this->line($xml, $cable));
         $xml->endElement();
 
         $xml->endElement(); // Document

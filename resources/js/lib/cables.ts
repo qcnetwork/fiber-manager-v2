@@ -37,7 +37,7 @@ export const jointTypes: Record<string, { label: string; short: string }> = {
  * Joint boxes and rosettes are shown by their code alone (their codes usually say JB/RS already).
  */
 export function endLabel(kind: string, code: string): string {
-    if (kind === 'joint') return code;
+    if (kind === 'joint' || kind === 'customer') return code;
     const prefix = kind.toUpperCase();
     return code.toUpperCase().startsWith(prefix) ? code : `${prefix} ${code}`;
 }

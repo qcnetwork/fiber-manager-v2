@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import PhotoGallery from '@/components/map/PhotoGallery.vue';
 import { Button } from '@/components/ui/button';
-import { formatLength } from '@/lib/cables';
+import { cableTypes, formatLength } from '@/lib/cables';
 import type { Customer } from '@/types';
 import { ArrowRightLeft, MapPinOff, Navigation, Pencil, X } from '@lucide/vue';
 import { computed } from 'vue';
@@ -18,6 +18,7 @@ const emit = defineEmits<{
     close: [];
     refresh: [];
     selectOdp: [id: number];
+    selectCable: [id: number];
 }>();
 
 const odp = computed(() => props.customer.port?.odp ?? null);
@@ -78,6 +79,18 @@ const odpDistance = computed(() => {
                 <div v-if="odpDistance !== null" class="font-sans text-muted-foreground">{{ formatLength(odpDistance) }} dari ODP (garis lurus)</div>
             </dd>
             <dd v-else class="flex items-center gap-1 text-muted-foreground"><MapPinOff class="size-3.5" /> Belum ada</dd>
+            <dt class="text-muted-foreground">Kabel drop</dt>
+            <dd>
+                <template v-if="customer.cables?.length">
+                    <div v-for="c in customer.cables" :key="c.id">
+                        <button class="font-medium text-blue-600 hover:underline dark:text-blue-400" @click="emit('selectCable', c.id)">
+                            {{ c.code ?? `Kabel ${cableTypes[c.type]?.label ?? c.type}` }}
+                        </button>
+                        <span class="text-muted-foreground"> · {{ formatLength(c.length_m) }}</span>
+                    </div>
+                </template>
+                <span v-else class="text-muted-foreground">Belum digambar</span>
+            </dd>
         </dl>
 
         <PhotoGallery
