@@ -523,6 +523,11 @@ function addCablePoint(lat: number, lng: number) {
  * The location and label of a POP/ODC/ODP a cable point attaches to (a POP is shown by its name; its code is the area code).
  */
 function linkTarget(kind: CableEndKind, id: number): { lat: number; lng: number; link: CableEndpoint } | null {
+    if (kind === 'customer') {
+        const c = customers.value.find((o) => o.id === id);
+        const code = c && (c.customer_code ? `${c.name} (${c.customer_code})` : c.name);
+        return c && code ? { lat: c.lat, lng: c.lng, link: { type: kind, id, code } } : null;
+    }
     const pop = kind === 'pop' ? pops.value.find((o) => o.id === id) : undefined;
     const markers: { id: number; lat: number; lng: number; code: string }[] =
         kind === 'odc' ? mapOdcs.value : kind === 'joint' ? mapJoints.value : mapOdps.value;
@@ -765,6 +770,10 @@ function endStoredEdit() {
 }
 
 function endpointCode(type: CableEndKind, id: number): string {
+    if (type === 'customer') {
+        const c = customers.value.find((m) => m.id === id);
+        return c ? (c.customer_code ? `${c.name} (${c.customer_code})` : c.name) : `Pelanggan #${id}`;
+    }
     const markers: { id: number; code: string | null }[] =
         { pop: pops.value, odc: mapOdcs.value, odp: mapOdps.value, joint: mapJoints.value }[type] ?? [];
     return markers.find((m) => m.id === id)?.code ?? `#${id}`;
@@ -868,7 +877,7 @@ onMounted(async () => {
 
 function onMapSelect(kind: MapItemKind, id: number) {
     if (mode.value === 'cable') {
-        if (kind === 'pop' || kind === 'odc' || kind === 'odp' || kind === 'joint') attachCablePoint(kind, id);
+        if (kind !== 'cable') attachCablePoint(kind, id);
     } else if (mode.value !== 'customer-form') {
         select(kind, id);
     }
@@ -1254,6 +1263,7 @@ watch([mode, selected], () => (sheetExpanded.value = false));
                         @move="movingCustomer = customerDetail"
                         @refresh="refreshSelected"
                         @select-odp="(id) => select('odp', id, true)"
+                        @select-cable="(id) => select('cable', id, true)"
                     />
 
                     <CustomerForm

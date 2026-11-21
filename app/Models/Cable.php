@@ -326,9 +326,9 @@ class Cable extends Model
     }
 
     /**
-     * Keeps cable ends and pass-through points on a POP/ODC/ODP after it is moved, and lets go of it when it is deleted.
+     * Keeps cable ends and pass-through points on a POP/ODC/ODP (or a drop cable end on a customer) after it is moved, and lets go of it when it is deleted.
      */
-    public static function followEndpoint(Area|Odc|Odp|SpliceBox $asset, bool $deleted = false): void
+    public static function followEndpoint(Area|Odc|Odp|SpliceBox|Customer $asset, bool $deleted = false): void
     {
         $type = $asset->getMorphClass();
 

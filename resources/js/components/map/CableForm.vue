@@ -72,6 +72,12 @@ watch(
 
 const length = computed(() => pathLength(props.path));
 
+// Only drop cables run to a customer's house: a new cable attached to one becomes a drop cable.
+const endsAtCustomer = computed(() => props.from?.type === 'customer' || props.to?.type === 'customer');
+watch(endsAtCustomer, (atCustomer) => {
+    if (atCustomer && isNew) form.type = 'drop';
+});
+
 function submit() {
     const options = { preserveScroll: true, preserveState: true, onSuccess: () => emit('saved') };
 

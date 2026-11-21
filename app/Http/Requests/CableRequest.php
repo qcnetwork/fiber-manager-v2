@@ -16,6 +16,9 @@ class CableRequest extends FormRequest
     /** What a cable end or pass-through point can attach to (morph aliases). */
     public const ASSET_TYPES = ['pop', 'odc', 'odp', 'joint'];
 
+    /** A cable end may also be a customer's house: the drop cable from the ODP. */
+    public const END_TYPES = [...self::ASSET_TYPES, 'customer'];
+
     public function authorize(): bool
     {
         return $this->user()->canEditNetwork();
@@ -37,9 +40,9 @@ class CableRequest extends FormRequest
             'path.*' => ['required', 'array', 'size:2'],
             'path.*.0' => ['required', 'numeric', 'between:-90,90'],
             'path.*.1' => ['required', 'numeric', 'between:-180,180'],
-            'from_type' => ['nullable', 'required_with:from_id', Rule::in(self::ASSET_TYPES)],
+            'from_type' => ['nullable', 'required_with:from_id', Rule::in(self::END_TYPES)],
             'from_id' => ['nullable', 'integer', $this->assetInArea()],
-            'to_type' => ['nullable', 'required_with:to_id', Rule::in(self::ASSET_TYPES)],
+            'to_type' => ['nullable', 'required_with:to_id', Rule::in(self::END_TYPES)],
             'to_id' => ['nullable', 'integer', $this->assetInArea()],
             // POPs/ODCs/ODPs the cable passes through, each pinned to a vertex of the path.
             'stops' => ['nullable', 'array', 'max:500'],
@@ -57,11 +60,33 @@ class CableRequest extends FormRequest
     {
         return [
             'path.min' => 'Jalur kabel minimal terdiri dari 2 titik.',
+            'stops.*.type.in' => 'Pelanggan hanya bisa jadi ujung kabel drop, bukan titik yang dilewati.',
         ];
     }
 
     /**
-     * A POP/ODC/ODP/joint a cable end or pass-through point is attached to must exist and be visible to the user.
+     * Only a drop cable runs to a customer's house.
+     *
+     * @return array<int, Closure>
+     */
+    public function after(): array
+    {
+        return [
+            function ($validator) {
+                if ($this->input('type') === CableType::Drop->value) {
+                    return;
+                }
+                foreach (['from_type', 'to_type'] as $end) {
+                    if ($this->input($end) === 'customer') {
+                        $validator->errors()->add($end, 'Hanya kabel drop yang bisa disambung ke pelanggan.');
+                    }
+                }
+            },
+        ];
+    }
+
+    /**
+     * A POP/ODC/ODP/joint (or, at an end, a customer) a cable is attached to must exist and be visible to the user.
      * It may lie in another area than the cable: cables link areas together.
      */
     private function assetInArea(): Closure
