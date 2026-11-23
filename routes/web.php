@@ -105,7 +105,9 @@ Route::middleware(['auth', 'verified', EnsureNotSales::class])->group(function (
 
     Route::middleware(EnsureAdministrator::class)->prefix('admin')->name('admin.')->group(function () {
         Route::resource('areas', AreaController::class)->only(['index', 'store', 'update', 'destroy']);
-        Route::put('coverage-radius', [CoverageController::class, 'updateRadius'])->name('coverage-radius.update');
+        // The ODP-to-customer distance limit applies to everyone: super admin only, not helpdesk.
+        Route::put('coverage-radius', [CoverageController::class, 'updateRadius'])->name('coverage-radius.update')
+            ->middleware(EnsureSuperAdmin::class);
 
         // Helpdesk shares the admin menu but may not manage users.
         Route::resource('users', UserController::class)->only(['index', 'store', 'update', 'destroy'])
