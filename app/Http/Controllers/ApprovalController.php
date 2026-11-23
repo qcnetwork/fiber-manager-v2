@@ -18,8 +18,8 @@ use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Batches of changes from technicians: approvers approve or reject them as a whole and may change an item
- * first; technicians follow their own.
+ * Batches of changes from technicians: approvers approve all or some of a batch (the rest is rejected) or reject
+ * it as a whole, and may change an item first; technicians follow their own.
  */
 class ApprovalController extends Controller
 {
@@ -98,14 +98,24 @@ class ApprovalController extends Controller
     public function approve(Request $request, ChangeBatch $batch): RedirectResponse
     {
         $batch = $this->reviewable($request, $batch);
-        $note = $request->validate(['note' => ['nullable', 'string', 'max:1000']])['note'] ?? null;
+        $data = $request->validate([
+            'note' => ['nullable', 'string', 'max:1000'],
+            // The changes to approve; the rest of the batch is rejected. Left out: all of them.
+            'items' => ['sometimes', 'array'],
+            'items.*' => ['integer', Rule::exists('change_requests', 'id')->where('batch_id', $batch->id)],
+        ]);
+        $itemIds = isset($data['items']) ? array_map('intval', $data['items']) : null;
 
-        $error = $this->requests->approveBatch($batch, $request->user(), $note);
+        $error = $this->requests->approveBatch($batch, $request->user(), $data['note'] ?? null, $itemIds);
         if ($error !== null) {
             return back()->with('noticeError', "Paket #{$batch->id} gagal diterapkan, tidak ada yang disimpan — {$error}");
         }
 
-        return back()->with('notice', "Paket #{$batch->id} disetujui.");
+        $rejected = $batch->items()->where('status', ChangeRequest::REJECTED)->count();
+
+        return back()->with('notice', $rejected
+            ? "Paket #{$batch->id} disetujui sebagian, {$rejected} perubahan ditolak."
+            : "Paket #{$batch->id} disetujui.");
     }
 
     public function reject(Request $request, ChangeBatch $batch): RedirectResponse
@@ -175,7 +185,9 @@ class ApprovalController extends Controller
             'area' => $batch->area?->only('id', 'code', 'name'),
             'map' => $pending ? route('map', ['batch' => $batch->id]) : null,
             'items' => $batch->items->map(fn (ChangeRequest $item) => [
-                ...$item->only('id', 'action', 'subject_type', 'subject_id', 'subject_label', 'preview'),
+                ...$item->only('id', 'status', 'action', 'subject_type', 'subject_id', 'subject_label', 'preview'),
+                // Changes of the batch this one builds on: those must be approved along with it.
+                'needs' => $pending ? $batch->items->filter(fn (ChangeRequest $other) => $this->requests->buildsOn($item, $other))->modelKeys() : [],
                 // A change to an existing photo: the photo as it is now.
                 'current_photo' => $pending && $item->subject_type === 'photo' && $item->subject_id
                     ? Photo::find($item->subject_id)?->thumb_url : null,
