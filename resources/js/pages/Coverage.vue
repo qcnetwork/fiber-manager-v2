@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import NetworkMap from '@/components/map/NetworkMap.vue';
+import OdpInfoPanel, { type OdpInfo } from '@/components/map/OdpInfoPanel.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -7,7 +8,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { formatLength } from '@/lib/cables';
 import { geocode, precisionWarning, resolveLocation, type GeocodeResult, type LocationPrecision } from '@/lib/coordinates';
 import { currentPosition, getJson } from '@/lib/http';
-import type { Area, BreadcrumbItem, CableLine, OdcMarker, OdpMarker, SharedData } from '@/types';
+import type { Area, BreadcrumbItem, CableLine, MapItemKind, OdcMarker, OdpMarker, SharedData } from '@/types';
 import { Head, useForm, usePage } from '@inertiajs/vue3';
 import {
     ChevronDown,
@@ -158,8 +159,40 @@ const warning = computed(() => (point.value ? precisionWarning(precision.value) 
 const panelHidden = ref(false);
 const fullscreen = useFullscreen(typeof document !== 'undefined' ? document.documentElement : undefined);
 
+// ---- ODP detail: read only, opened from a marker or the result list
+const odpInfo = ref<OdpInfo | null>(null);
+const loadingOdpId = ref<number | null>(null);
+const selectedMarker = computed(() => (odpInfo.value ? { kind: 'odp' as MapItemKind, id: odpInfo.value.id } : null));
+const odpDistance = computed(() => {
+    const r = result.value;
+    const id = odpInfo.value?.id;
+    if (!r || !id) return null;
+    const hit = [...r.available, ...r.full, ...r.planned, ...(r.nearest_outside ? [r.nearest_outside] : [])].find((o) => o.id === id);
+    return hit?.distance ?? null;
+});
+
+async function openOdp(id: number) {
+    panelHidden.value = false;
+    loadingOdpId.value = id;
+    error.value = '';
+    try {
+        const info = await getJson<OdpInfo>(route('coverage.odp', { odp: id }));
+        if (loadingOdpId.value === id) odpInfo.value = info;
+    } catch (e) {
+        error.value = (e as Error).message;
+    } finally {
+        if (loadingOdpId.value === id) loadingOdpId.value = null;
+    }
+}
+
+function onSelect(kind: MapItemKind, id: number) {
+    if (kind === 'odp') openOdp(id);
+}
+
 async function check(lat: number, lng: number, from: LocationPrecision = 'exact') {
-    panelHidden.value = false; // tapping the map while the panel is hidden shows the result
+    panelHidden.value = false;
+    odpInfo.value = null;
+    loadingOdpId.value = null; // tapping the map while the panel is hidden shows the result
     precision.value = from;
     point.value = { lat, lng };
     geoResults.value = [];
@@ -320,208 +353,240 @@ async function copyResult() {
                     v-show="!panelHidden"
                     class="max-h-[55%] shrink-0 overflow-y-auto overscroll-contain rounded-t-2xl border-t p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-[0_-4px_12px_rgba(0,0,0,.08)] md:max-h-none md:w-[400px] md:rounded-none md:border-t-0 md:border-r md:pb-4 md:shadow-none"
                 >
-                    <div class="mb-3 flex items-start justify-between gap-2 max-md:mb-2">
-                        <div>
-                            <h1 class="text-lg font-semibold max-md:hidden">Cek coverage calon pelanggan</h1>
-                            <form v-if="editingRadius" class="mt-1 flex flex-wrap items-center gap-1.5 text-sm" @submit.prevent="saveRadius">
-                                <label for="coverage-radius" class="text-muted-foreground">Batas jarak</label>
-                                <Input
-                                    id="coverage-radius"
-                                    v-model.number="radiusForm.radius"
-                                    type="number"
-                                    :min="radiusLimits[0]"
-                                    :max="radiusLimits[1]"
-                                    step="10"
-                                    class="h-8 w-24"
-                                />
-                                <span class="text-muted-foreground">m</span>
-                                <Button type="submit" size="sm" class="h-8" :disabled="radiusForm.processing">Simpan</Button>
-                                <Button type="button" variant="ghost" size="sm" class="h-8" @click="editingRadius = false">Batal</Button>
-                                <p v-if="radiusForm.errors.radius" class="w-full text-xs text-red-600">{{ radiusForm.errors.radius }}</p>
-                            </form>
-                            <p v-else class="flex items-center gap-1 text-sm text-muted-foreground max-md:text-xs">
-                                Batas jarak ODP ke pelanggan: {{ radius }} m.
-                                <button
-                                    v-if="canEditRadius"
-                                    type="button"
-                                    class="rounded p-1 hover:bg-muted hover:text-foreground"
-                                    title="Ubah batas jarak (berlaku untuk semua pengguna)"
-                                    @click="editRadius"
-                                >
-                                    <Pencil class="size-3.5" />
-                                    <span class="sr-only">Ubah batas jarak</span>
-                                </button>
-                            </p>
-                            <label v-if="routingAvailable" class="mt-1.5 flex w-fit cursor-pointer items-center gap-2 text-sm max-md:text-xs">
-                                <input v-model="roadOn" type="checkbox" class="size-4 accent-primary" />
-                                <span>Hitung jarak lewat jalan</span>
-                                <span class="text-xs text-muted-foreground">{{ roadOn ? '(lebih akurat)' : '(garis lurus, lebih cepat)' }}</span>
-                            </label>
-                        </div>
-                        <div class="flex shrink-0 gap-1">
-                            <Button
-                                v-if="fullscreen.isSupported.value"
-                                variant="outline"
-                                size="icon"
-                                class="size-9"
-                                :title="fullscreen.isFullscreen.value ? 'Keluar dari layar penuh' : 'Layar penuh'"
-                                @click="fullscreen.toggle()"
-                            >
-                                <Minimize v-if="fullscreen.isFullscreen.value" class="size-4" />
-                                <Maximize v-else class="size-4" />
-                            </Button>
-                            <Button variant="outline" size="icon" class="size-9" title="Sembunyikan panel (peta penuh)" @click="panelHidden = true">
-                                <ChevronDown class="size-5 md:hidden" />
-                                <PanelLeftClose class="size-4 max-md:hidden" />
-                            </Button>
-                        </div>
-                    </div>
-
-                    <form class="flex gap-2" @submit.prevent="search">
-                        <div class="relative flex-1">
-                            <Search class="absolute top-3.5 left-2.5 size-4 text-muted-foreground md:top-3" />
-                            <Input
-                                v-model="query"
-                                type="search"
-                                enterkeyhint="search"
-                                class="h-11 pl-8 text-base md:h-10 md:text-sm"
-                                placeholder="Alamat, koordinat, atau link Google Maps"
-                            />
-                        </div>
-                        <Button type="submit" class="h-11 md:h-10" :disabled="searching || checking">
-                            <LoaderCircle v-if="searching || checking" class="size-4 animate-spin" />
-                            <span v-else>Cek</span>
-                        </Button>
-                    </form>
-                    <div class="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                        <span>Atau tap lokasi di peta.</span>
-                        <Button variant="outline" size="sm" :disabled="locating" @click="useGps">
-                            <LoaderCircle v-if="locating" class="size-4 animate-spin" />
-                            <Crosshair v-else class="size-4" />
-                            Lokasi saya
-                        </Button>
-                    </div>
-
-                    <ul v-if="geoResults.length" class="mt-3 divide-y rounded-md border text-sm">
-                        <li v-for="(g, i) in geoResults" :key="i">
-                            <button
-                                type="button"
-                                class="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted"
-                                @click="check(g.lat, g.lng)"
-                            >
-                                <MapPin class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                                <span>{{ g.label }}</span>
-                            </button>
-                        </li>
-                        <li class="px-3 py-1.5 text-xs text-muted-foreground">
-                            Hasil alamat bisa kurang tepat — pastikan titiknya di peta, tap ulang bila perlu.
-                        </li>
-                    </ul>
-
-                    <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
-
-                    <p
-                        v-if="warning && !error"
-                        class="mt-3 flex gap-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100"
-                    >
-                        <TriangleAlert class="size-4 shrink-0" />
-                        <span>{{ warning }}</span>
-                    </p>
-
-                    <!-- Result -->
-                    <div v-if="result && verdict && point" class="mt-4 grid gap-3">
-                        <div class="rounded-lg border-l-4 p-4" :class="verdict.tone">
-                            <div class="flex items-center gap-2 text-xl font-bold">
-                                <component :is="verdict.icon" class="size-6" />
-                                {{ verdict.title }}
+                    <OdpInfoPanel v-if="odpInfo" :odp="odpInfo" :distance="odpDistance" @close="odpInfo = null" />
+                    <template v-else>
+                        <div class="mb-3 flex items-start justify-between gap-2 max-md:mb-2">
+                            <div>
+                                <h1 class="text-lg font-semibold max-md:hidden">Cek coverage calon pelanggan</h1>
+                                <form v-if="editingRadius" class="mt-1 flex flex-wrap items-center gap-1.5 text-sm" @submit.prevent="saveRadius">
+                                    <label for="coverage-radius" class="text-muted-foreground">Batas jarak</label>
+                                    <Input
+                                        id="coverage-radius"
+                                        v-model.number="radiusForm.radius"
+                                        type="number"
+                                        :min="radiusLimits[0]"
+                                        :max="radiusLimits[1]"
+                                        step="10"
+                                        class="h-8 w-24"
+                                    />
+                                    <span class="text-muted-foreground">m</span>
+                                    <Button type="submit" size="sm" class="h-8" :disabled="radiusForm.processing">Simpan</Button>
+                                    <Button type="button" variant="ghost" size="sm" class="h-8" @click="editingRadius = false">Batal</Button>
+                                    <p v-if="radiusForm.errors.radius" class="w-full text-xs text-red-600">{{ radiusForm.errors.radius }}</p>
+                                </form>
+                                <p v-else class="flex items-center gap-1 text-sm text-muted-foreground max-md:text-xs">
+                                    Batas jarak ODP ke pelanggan: {{ radius }} m.
+                                    <button
+                                        v-if="canEditRadius"
+                                        type="button"
+                                        class="rounded p-1 hover:bg-muted hover:text-foreground"
+                                        title="Ubah batas jarak (berlaku untuk semua pengguna)"
+                                        @click="editRadius"
+                                    >
+                                        <Pencil class="size-3.5" />
+                                        <span class="sr-only">Ubah batas jarak</span>
+                                    </button>
+                                </p>
+                                <label v-if="routingAvailable" class="mt-1.5 flex w-fit cursor-pointer items-center gap-2 text-sm max-md:text-xs">
+                                    <input v-model="roadOn" type="checkbox" class="size-4 accent-primary" />
+                                    <span>Hitung jarak lewat jalan</span>
+                                    <span class="text-xs text-muted-foreground">{{ roadOn ? '(lebih akurat)' : '(garis lurus, lebih cepat)' }}</span>
+                                </label>
                             </div>
-                            <p class="mt-1 text-sm">{{ verdict.text }}</p>
+                            <div class="flex shrink-0 gap-1">
+                                <Button
+                                    v-if="fullscreen.isSupported.value"
+                                    variant="outline"
+                                    size="icon"
+                                    class="size-9"
+                                    :title="fullscreen.isFullscreen.value ? 'Keluar dari layar penuh' : 'Layar penuh'"
+                                    @click="fullscreen.toggle()"
+                                >
+                                    <Minimize v-if="fullscreen.isFullscreen.value" class="size-4" />
+                                    <Maximize v-else class="size-4" />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    class="size-9"
+                                    title="Sembunyikan panel (peta penuh)"
+                                    @click="panelHidden = true"
+                                >
+                                    <ChevronDown class="size-5 md:hidden" />
+                                    <PanelLeftClose class="size-4 max-md:hidden" />
+                                </Button>
+                            </div>
                         </div>
 
-                        <div v-if="result.available.length">
-                            <h2 class="mb-1 text-sm font-semibold">ODP yang bisa dipakai</h2>
-                            <ul class="divide-y rounded-md border text-sm">
-                                <li v-for="(odp, i) in result.available" :key="odp.id" class="flex items-center gap-3 px-3 py-2">
-                                    <span
-                                        class="flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                                        :class="i === 0 ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground'"
-                                        >{{ i + 1 }}</span
-                                    >
-                                    <div class="min-w-0 flex-1">
-                                        <div class="truncate font-medium">{{ odp.code }}</div>
-                                        <div class="text-xs text-muted-foreground">{{ odp.free_ports }} port kosong dari {{ odp.capacity }}</div>
-                                    </div>
-                                    <span class="font-semibold tabular-nums">{{ odp.distance }} m</span>
-                                    <Button
-                                        as="a"
-                                        :href="odpMapsUrl(odp)"
-                                        target="_blank"
-                                        variant="outline"
-                                        size="icon"
-                                        class="size-8 shrink-0"
-                                        :title="`Buka ${odp.code} di Google Maps`"
-                                    >
-                                        <ExternalLink class="size-4" />
-                                        <span class="sr-only">Google Maps</span>
-                                    </Button>
-                                </li>
-                            </ul>
-                            <p v-if="nearLimit" class="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                                Jarak mendekati batas {{ radius }} m — konfirmasi ke teknisi, karena kabel drop mengikuti jalur tiang.
+                        <form class="flex gap-2" @submit.prevent="search">
+                            <div class="relative flex-1">
+                                <Search class="absolute top-3.5 left-2.5 size-4 text-muted-foreground md:top-3" />
+                                <Input
+                                    v-model="query"
+                                    type="search"
+                                    enterkeyhint="search"
+                                    class="h-11 pl-8 text-base md:h-10 md:text-sm"
+                                    placeholder="Alamat, koordinat, atau link Google Maps"
+                                />
+                            </div>
+                            <Button type="submit" class="h-11 md:h-10" :disabled="searching || checking">
+                                <LoaderCircle v-if="searching || checking" class="size-4 animate-spin" />
+                                <span v-else>Cek</span>
+                            </Button>
+                        </form>
+                        <div class="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                            <span>Atau tap lokasi di peta. Tap ODP untuk lihat detail.</span>
+                            <Button variant="outline" size="sm" :disabled="locating" @click="useGps">
+                                <LoaderCircle v-if="locating" class="size-4 animate-spin" />
+                                <Crosshair v-else class="size-4" />
+                                Lokasi saya
+                            </Button>
+                        </div>
+
+                        <ul v-if="geoResults.length" class="mt-3 divide-y rounded-md border text-sm">
+                            <li v-for="(g, i) in geoResults" :key="i">
+                                <button
+                                    type="button"
+                                    class="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted"
+                                    @click="check(g.lat, g.lng)"
+                                >
+                                    <MapPin class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                                    <span>{{ g.label }}</span>
+                                </button>
+                            </li>
+                            <li class="px-3 py-1.5 text-xs text-muted-foreground">
+                                Hasil alamat bisa kurang tepat — pastikan titiknya di peta, tap ulang bila perlu.
+                            </li>
+                        </ul>
+
+                        <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
+
+                        <p
+                            v-if="warning && !error"
+                            class="mt-3 flex gap-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+                        >
+                            <TriangleAlert class="size-4 shrink-0" />
+                            <span>{{ warning }}</span>
+                        </p>
+
+                        <!-- Result -->
+                        <div v-if="result && verdict && point" class="mt-4 grid gap-3">
+                            <div class="rounded-lg border-l-4 p-4" :class="verdict.tone">
+                                <div class="flex items-center gap-2 text-xl font-bold">
+                                    <component :is="verdict.icon" class="size-6" />
+                                    {{ verdict.title }}
+                                </div>
+                                <p class="mt-1 text-sm">{{ verdict.text }}</p>
+                            </div>
+
+                            <div v-if="result.available.length">
+                                <h2 class="mb-1 text-sm font-semibold">ODP yang bisa dipakai</h2>
+                                <ul class="divide-y rounded-md border text-sm">
+                                    <li v-for="(odp, i) in result.available" :key="odp.id" class="flex items-center gap-3 px-3 py-2">
+                                        <span
+                                            class="flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                                            :class="i === 0 ? 'bg-green-600 text-white' : 'bg-muted text-muted-foreground'"
+                                            >{{ i + 1 }}</span
+                                        >
+                                        <div class="min-w-0 flex-1">
+                                            <button
+                                                type="button"
+                                                class="flex max-w-full items-center gap-1 truncate font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                                title="Lihat detail ODP"
+                                                @click="openOdp(odp.id)"
+                                            >
+                                                {{ odp.code }}
+                                                <LoaderCircle v-if="loadingOdpId === odp.id" class="size-3.5 animate-spin" />
+                                            </button>
+                                            <div class="text-xs text-muted-foreground">{{ odp.free_ports }} port kosong dari {{ odp.capacity }}</div>
+                                        </div>
+                                        <span class="font-semibold tabular-nums">{{ odp.distance }} m</span>
+                                        <Button
+                                            as="a"
+                                            :href="odpMapsUrl(odp)"
+                                            target="_blank"
+                                            variant="outline"
+                                            size="icon"
+                                            class="size-8 shrink-0"
+                                            :title="`Buka ${odp.code} di Google Maps`"
+                                        >
+                                            <ExternalLink class="size-4" />
+                                            <span class="sr-only">Google Maps</span>
+                                        </Button>
+                                    </li>
+                                </ul>
+                                <p v-if="nearLimit" class="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                                    Jarak mendekati batas {{ radius }} m — konfirmasi ke teknisi, karena kabel drop mengikuti jalur tiang.
+                                </p>
+                            </div>
+
+                            <div v-if="result.full.length && !result.available.length">
+                                <h2 class="mb-1 text-sm font-semibold">ODP terdekat (penuh)</h2>
+                                <ul class="divide-y rounded-md border text-sm">
+                                    <li v-for="odp in result.full" :key="odp.id" class="flex items-center gap-3 px-3 py-2">
+                                        <button
+                                            type="button"
+                                            class="flex min-w-0 flex-1 items-center gap-1 truncate text-left font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                            title="Lihat detail ODP"
+                                            @click="openOdp(odp.id)"
+                                        >
+                                            {{ odp.code }}
+                                            <LoaderCircle v-if="loadingOdpId === odp.id" class="size-3.5 animate-spin" />
+                                        </button>
+                                        <span class="tabular-nums">{{ odp.distance }} m · {{ odp.used_ports }}/{{ odp.capacity }}</span>
+                                        <Button
+                                            as="a"
+                                            :href="odpMapsUrl(odp)"
+                                            target="_blank"
+                                            variant="outline"
+                                            size="icon"
+                                            class="size-8 shrink-0"
+                                            :title="`Buka ${odp.code} di Google Maps`"
+                                        >
+                                            <ExternalLink class="size-4" />
+                                            <span class="sr-only">Google Maps</span>
+                                        </Button>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <p v-if="result.nearest_outside" class="rounded-md bg-muted p-3 text-sm">
+                                ODP terdekat yang masih ada port:
+                                <button
+                                    type="button"
+                                    class="font-bold text-blue-600 hover:underline dark:text-blue-400"
+                                    title="Lihat detail ODP"
+                                    @click="openOdp(result.nearest_outside.id)"
+                                >
+                                    {{ result.nearest_outside.code }}</button
+                                >, {{ formatLength(result.nearest_outside.distance) }} — di luar batas {{ radius }} m.
+                            </p>
+
+                            <p v-if="result.planned.length" class="rounded-md bg-muted p-3 text-sm">
+                                Ada ODP <b>rencana</b> (belum aktif) dalam {{ radius }} m:
+                                {{ result.planned.map((o) => `${o.code} (${o.distance} m)`).join(', ') }}.
+                            </p>
+
+                            <div class="flex flex-wrap gap-2">
+                                <Button variant="outline" size="sm" @click="copyResult">
+                                    <Copy class="size-4" />
+                                    {{ copied ? 'Tersalin' : 'Salin hasil' }}
+                                </Button>
+                                <Button as="a" :href="mapsUrl" target="_blank" variant="outline" size="sm"
+                                    ><ExternalLink class="size-4" /> Google Maps</Button
+                                >
+                            </div>
+                            <p v-if="byRoad" class="text-xs text-muted-foreground">
+                                Jarak dihitung lewat jalan (perkiraan, jalur kabel bisa berbeda). Data jalan © OpenStreetMap contributors, rute oleh
+                                OSRM/FOSSGIS.
+                            </p>
+                            <p v-else class="text-xs text-muted-foreground">
+                                Jarak dihitung garis lurus dari titik lokasi ke ODP{{
+                                    routingAvailable && roadOn ? ' (server rute jalan sedang tidak tersedia)' : ''
+                                }}.
                             </p>
                         </div>
-
-                        <div v-if="result.full.length && !result.available.length">
-                            <h2 class="mb-1 text-sm font-semibold">ODP terdekat (penuh)</h2>
-                            <ul class="divide-y rounded-md border text-sm">
-                                <li v-for="odp in result.full" :key="odp.id" class="flex items-center gap-3 px-3 py-2">
-                                    <span class="min-w-0 flex-1 truncate font-medium">{{ odp.code }}</span>
-                                    <span class="tabular-nums">{{ odp.distance }} m · {{ odp.used_ports }}/{{ odp.capacity }}</span>
-                                    <Button
-                                        as="a"
-                                        :href="odpMapsUrl(odp)"
-                                        target="_blank"
-                                        variant="outline"
-                                        size="icon"
-                                        class="size-8 shrink-0"
-                                        :title="`Buka ${odp.code} di Google Maps`"
-                                    >
-                                        <ExternalLink class="size-4" />
-                                        <span class="sr-only">Google Maps</span>
-                                    </Button>
-                                </li>
-                            </ul>
-                        </div>
-
-                        <p v-if="result.nearest_outside" class="rounded-md bg-muted p-3 text-sm">
-                            ODP terdekat yang masih ada port: <b>{{ result.nearest_outside.code }}</b
-                            >, {{ formatLength(result.nearest_outside.distance) }} — di luar batas {{ radius }} m.
-                        </p>
-
-                        <p v-if="result.planned.length" class="rounded-md bg-muted p-3 text-sm">
-                            Ada ODP <b>rencana</b> (belum aktif) dalam {{ radius }} m:
-                            {{ result.planned.map((o) => `${o.code} (${o.distance} m)`).join(', ') }}.
-                        </p>
-
-                        <div class="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" @click="copyResult">
-                                <Copy class="size-4" />
-                                {{ copied ? 'Tersalin' : 'Salin hasil' }}
-                            </Button>
-                            <Button as="a" :href="mapsUrl" target="_blank" variant="outline" size="sm"
-                                ><ExternalLink class="size-4" /> Google Maps</Button
-                            >
-                        </div>
-                        <p v-if="byRoad" class="text-xs text-muted-foreground">
-                            Jarak dihitung lewat jalan (perkiraan, jalur kabel bisa berbeda). Data jalan © OpenStreetMap contributors, rute oleh
-                            OSRM/FOSSGIS.
-                        </p>
-                        <p v-else class="text-xs text-muted-foreground">
-                            Jarak dihitung garis lurus dari titik lokasi ke ODP{{
-                                routingAvailable && roadOn ? ' (server rute jalan sedang tidak tersedia)' : ''
-                            }}.
-                        </p>
-                    </div>
+                    </template>
                 </section>
 
                 <!-- Map -->
@@ -545,7 +610,7 @@ async function copyResult() {
                         :odps="odps"
                         :cables="cables"
                         :draft="null"
-                        :selected="null"
+                        :selected="selectedMarker"
                         :pick="null"
                         :nearest="mapOverlay"
                         :center="view.center"
@@ -553,7 +618,7 @@ async function copyResult() {
                         :hide-cables="isSales"
                         @bounds="onBounds"
                         @click="onMapClick"
-                        @select="() => {}"
+                        @select="onSelect"
                     />
                 </div>
             </div>
