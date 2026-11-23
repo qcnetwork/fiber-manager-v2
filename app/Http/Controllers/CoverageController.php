@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\PortStatus;
 use App\Models\Area;
+use App\Models\Odp;
+use App\Models\OdpPort;
 use App\Services\CoverageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -35,6 +38,26 @@ class CoverageController extends Controller
         ]);
 
         return response()->json($coverage->check((float) $data['lat'], (float) $data['lng'], $request->boolean('road', true)));
+    }
+
+    /**
+     * Read-only ODP summary for the coverage page. Open to sales too, so it carries no customer data.
+     */
+    public function odp(Odp $odp): JsonResponse
+    {
+        $odp->load(['area:id,name', 'odc:id,code', 'ports:id,odp_id,number,status']);
+        $used = $odp->ports->where('status', '!=', PortStatus::Kosong)->count();
+
+        return response()->json([
+            ...$odp->only('id', 'code', 'name', 'lat', 'lng', 'capacity', 'splitter_ratio', 'pole_number', 'address'),
+            'installed_at' => $odp->installed_at?->format('Y-m-d'),
+            'status' => $odp->status->value,
+            'area' => $odp->area?->name,
+            'odc' => $odp->odc?->code,
+            'used_ports' => $used,
+            'free_ports' => $odp->ports->count() - $used,
+            'ports' => $odp->ports->map(fn (OdpPort $port) => ['number' => $port->number, 'status' => $port->status->value])->values(),
+        ]);
     }
 
     /**

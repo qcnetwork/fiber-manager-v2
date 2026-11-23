@@ -6,6 +6,7 @@ use App\Enums\PortStatus;
 use App\Enums\Role;
 use App\Models\Area;
 use App\Models\Cable;
+use App\Models\Customer;
 use App\Models\Odp;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -261,6 +262,38 @@ class CoverageTest extends TestCase
         $this->assertSame([], $this->getJson('/map/search?q=KBL-SALES')->assertOk()->json('cables') ?? []);
         $this->getJson("/cables/{$cable->id}")->assertForbidden();
         $this->getJson('/cables/nearby?lat=-6.2&lng=106.801')->assertForbidden();
+    }
+
+    public function test_sales_can_view_an_odp_read_only_without_customer_data()
+    {
+        $odp = $this->odpAt(0.001, ['code' => 'ODP-INFO', 'pole_number' => 'T-12', 'installed_at' => '2026-01-05']);
+        $customer = Customer::create(['area_id' => $this->area->id, 'name' => 'Budi Rahasia', 'phone' => '0812']);
+        $odp->ports()->where('number', 2)->update(['status' => PortStatus::Terpakai, 'customer_id' => $customer->id]);
+
+        $this->actingAs($this->sales());
+        $response = $this->getJson("/coverage/odps/{$odp->id}")->assertOk();
+
+        $response->assertJsonPath('code', 'ODP-INFO')
+            ->assertJsonPath('pole_number', 'T-12')
+            ->assertJsonPath('installed_at', '2026-01-05')
+            ->assertJsonPath('area', $this->area->name)
+            ->assertJsonPath('used_ports', 1)
+            ->assertJsonPath('free_ports', 7)
+            ->assertJsonPath('ports.1', ['number' => 2, 'status' => 'terpakai']);
+        $this->assertStringNotContainsString('Budi Rahasia', $response->getContent());
+        $this->assertStringNotContainsString('0812', $response->getContent());
+
+        // Still no way to change it.
+        $this->putJson("/odps/{$odp->id}", ['code' => 'X'])->assertForbidden();
+        $this->patchJson("/ports/{$odp->ports()->first()->id}", ['status' => 'rusak'])->assertForbidden();
+    }
+
+    public function test_odp_detail_respects_the_users_area()
+    {
+        $odp = $this->odpAt(0.001);
+        $this->actingAs(User::factory()->create(['role' => Role::Sales, 'area_id' => Area::factory()->create()->id]));
+
+        $this->getJson("/coverage/odps/{$odp->id}")->assertNotFound();
     }
 
     public function test_staff_can_use_coverage_too_and_their_area_still_applies()

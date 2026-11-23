@@ -35,6 +35,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Open to every role, including sales.
     Route::get('coverage', [CoverageController::class, 'index'])->name('coverage');
     Route::get('coverage/check', [CoverageController::class, 'check'])->name('coverage.check');
+    Route::get('coverage/odps/{odp}', [CoverageController::class, 'odp'])->name('coverage.odp');
     Route::get('map/features', [MapController::class, 'features'])->name('map.features');
     Route::get('map/search', [MapController::class, 'search'])->name('map.search');
     Route::get('map/resolve-link', [MapController::class, 'resolveLink'])->middleware('throttle:30,1')->name('map.resolve-link');
