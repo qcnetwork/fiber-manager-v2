@@ -50,7 +50,7 @@ const sections: Section[] = [
         points: [
             'Masuk dengan username (atau email) dan password dari admin.',
             'Di HP, pakai menu **Install aplikasi** di bawah menu samping agar aplikasi bisa dibuka seperti aplikasi biasa.',
-            'Menu utama teknisi: **Peta Jaringan** (pekerjaan sehari-hari), **Dashboard**, **Cek Coverage**, **Ekspor & Impor**, dan **Request Saya** (status perubahan yang dikirim).',
+            'Menu utama teknisi: **Peta Jaringan** (pekerjaan sehari-hari), **Dashboard**, **Cek Coverage**, dan **Request Saya** (status perubahan yang dikirim).',
             'Izinkan akses lokasi di browser supaya tombol GPS / Lokasi saya bisa dipakai.',
         ],
     },
