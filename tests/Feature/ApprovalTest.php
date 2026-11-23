@@ -500,4 +500,42 @@ class ApprovalTest extends TestCase
         $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::Viewer]))
             ->get('/approvals')->assertForbidden();
     }
+
+    public function test_an_approver_can_approve_only_some_changes_of_a_batch()
+    {
+        $this->actingAs($this->teknisi);
+        $this->post('/odcs', $this->odcPayload());
+        $odcDraft = ChangeRequest::sole();
+        $this->post('/odps', $this->odpPayload(['odc_id' => $odcDraft->token(), 'odc_port' => 1]));
+        $odpDraft = ChangeRequest::latest('id')->first();
+        $this->post('/odps', $this->odpPayload(['code' => 'ODP-REQ-02', 'lng' => 106.81]));
+        $loneDraft = ChangeRequest::latest('id')->first();
+        $batch = $this->submit();
+
+        // The page tells which changes build on which.
+        $this->actingAs($this->admin)->get('/approvals')->assertInertia(fn ($page) => $page
+            ->where('batches.data.0.items.1.needs', [$odcDraft->id])
+            ->where('batches.data.0.items.2.needs', []));
+
+        // An ODP on a draft ODC can't be approved without that ODC.
+        $this->post("/approvals/{$batch->id}/approve", ['items' => [$odpDraft->id]])->assertSessionHas('noticeError');
+        $this->assertSame(0, Odp::count());
+        $this->assertSame(ChangeBatch::PENDING, $batch->fresh()->status);
+
+        // Nothing chosen, or a change of another batch, is refused.
+        $this->post("/approvals/{$batch->id}/approve", ['items' => []])->assertSessionHas('noticeError');
+        $this->post("/approvals/{$batch->id}/approve", ['items' => [999999]])->assertSessionHasErrors('items.0');
+
+        $this->post("/approvals/{$batch->id}/approve", ['items' => [$odcDraft->id, $odpDraft->id]])
+            ->assertSessionHas('notice', "Paket #{$batch->id} disetujui sebagian, 1 perubahan ditolak.");
+
+        $this->assertSame(Odc::sole()->id, Odp::sole()->odc_id);
+        $this->assertDatabaseMissing('odps', ['code' => 'ODP-REQ-02']);
+        $this->assertSame(ChangeBatch::APPROVED, $batch->fresh()->status);
+        $this->assertSame(ChangeRequest::APPROVED, $odpDraft->fresh()->status);
+        $this->assertSame(ChangeRequest::REJECTED, $loneDraft->fresh()->status);
+
+        $this->get('/approvals?tab=history')->assertInertia(fn ($page) => $page
+            ->where('batches.data.0.items.2.status', ChangeRequest::REJECTED));
+    }
 }

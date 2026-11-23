@@ -20,6 +20,9 @@ interface PreviewEntry {
 
 interface Item {
     id: number;
+    status: Status;
+    /** Items of the batch this one builds on: approving it needs them too. */
+    needs: number[];
     action: ActivityAction;
     subject_type: string;
     subject_id: number | null;
@@ -86,10 +89,34 @@ const note = ref('');
 
 const done = { preserveScroll: true, onFinish: () => (busy.value = null) };
 
-function approve(batch: Batch) {
-    busy.value = batch.id;
-    router.post(route('approvals.approve', { batch: batch.id }), {}, done);
+// ---- Choosing which changes to approve; the ones left out are rejected.
+/** Items left out of the approval, by item id. */
+const skipped = ref<Record<number, boolean>>({});
+
+const chosen = (batch: Batch) => batch.items.filter((i) => !skipped.value[i.id]);
+
+/** Choosing an item also chooses what it builds on; leaving one out also leaves out what builds on it. */
+function toggle(batch: Batch, item: Item, on: boolean) {
+    const stack = [item];
+    while (stack.length) {
+        const current = stack.pop()!;
+        if (!skipped.value[current.id] === on) continue;
+        skipped.value[current.id] = !on;
+        const related = on ? batch.items.filter((i) => current.needs.includes(i.id)) : batch.items.filter((i) => i.needs.includes(current.id));
+        stack.push(...related);
+    }
 }
+
+function approve(batch: Batch) {
+    const items = chosen(batch);
+    busy.value = batch.id;
+    router.post(route('approvals.approve', { batch: batch.id }), items.length === batch.items.length ? {} : { items: items.map((i) => i.id) }, done);
+}
+
+const batchStatus = (batch: Batch) =>
+    batch.status === 'approved' && batch.items.some((i) => i.status === 'rejected')
+        ? { label: 'Disetujui sebagian', class: statuses.approved.class }
+        : statuses[batch.status];
 
 function startReject(batch: Batch) {
     rejecting.value = batch.id;
@@ -164,8 +191,8 @@ const emptyText = computed(() =>
                         <span class="text-muted-foreground">· {{ batch.items.length }} perubahan</span>
                         <span v-if="batch.area" class="text-xs text-muted-foreground">· {{ batch.area.name }}</span>
                         <span v-else class="text-xs text-muted-foreground">· beberapa area</span>
-                        <span class="ml-auto rounded px-1.5 py-0.5 text-xs font-medium" :class="statuses[batch.status].class">
-                            {{ statuses[batch.status].label }}
+                        <span class="ml-auto rounded px-1.5 py-0.5 text-xs font-medium" :class="batchStatus(batch).class">
+                            {{ batchStatus(batch).label }}
                         </span>
                     </div>
 
@@ -174,7 +201,7 @@ const emptyText = computed(() =>
                         {{ formatTime(batch.submitted_at) }}
                         <template v-if="batch.status !== 'pending' && batch.reviewed_at">
                             <br />
-                            {{ statuses[batch.status].label }}
+                            {{ batchStatus(batch).label }}
                             <template v-if="batch.reviewer"
                                 >oleh <span class="font-medium text-foreground">{{ batch.reviewer.name }}</span></template
                             >
@@ -197,8 +224,31 @@ const emptyText = computed(() =>
                     </p>
 
                     <ul class="flex flex-col divide-y rounded-md border">
-                        <li v-for="item in batch.items" :key="item.id" class="flex flex-col gap-2 px-3 py-2">
+                        <li
+                            v-for="item in batch.items"
+                            :key="item.id"
+                            class="flex flex-col gap-2 px-3 py-2"
+                            :class="
+                                (skipped[item.id] && batch.status === 'pending') || (batch.status === 'approved' && item.status === 'rejected')
+                                    ? 'opacity-60'
+                                    : ''
+                            "
+                        >
                             <div class="flex flex-wrap items-center gap-2 text-sm">
+                                <input
+                                    v-if="canApprove && batch.status === 'pending' && batch.items.length > 1"
+                                    type="checkbox"
+                                    class="size-4 accent-primary"
+                                    :checked="!skipped[item.id]"
+                                    :aria-label="`Setujui ${item.subject_label ?? 'perubahan'}`"
+                                    @change="toggle(batch, item, ($event.target as HTMLInputElement).checked)"
+                                />
+                                <span
+                                    v-if="batch.status === 'approved' && item.status === 'rejected'"
+                                    class="rounded px-1.5 py-0.5 text-xs font-medium"
+                                    :class="statuses.rejected.class"
+                                    >Ditolak</span
+                                >
                                 <span class="rounded px-1.5 py-0.5 text-xs font-medium" :class="activityActions[item.action]?.class">
                                     {{ activityActions[item.action]?.label ?? item.action }}
                                 </span>
@@ -245,7 +295,12 @@ const emptyText = computed(() =>
                             </div>
                         </li>
                     </ul>
-                    <p class="text-xs text-muted-foreground">Klik nama perubahan untuk melihat rinciannya.</p>
+                    <p class="text-xs text-muted-foreground">
+                        Klik nama perubahan untuk melihat rinciannya.
+                        <template v-if="canApprove && batch.status === 'pending' && batch.items.length > 1">
+                            Hilangkan centang pada perubahan yang tidak disetujui; perubahan itu akan ditolak.
+                        </template>
+                    </p>
 
                     <div v-if="rejecting === batch.id" class="flex flex-col gap-2">
                         <textarea
@@ -271,7 +326,14 @@ const emptyText = computed(() =>
                             <Button size="sm" variant="outline" :disabled="busy === batch.id" @click="startReject(batch)"
                                 ><X class="size-4" /> Tolak</Button
                             >
-                            <Button size="sm" :disabled="busy === batch.id" @click="approve(batch)"><Check class="size-4" /> Setujui semua</Button>
+                            <Button size="sm" :disabled="busy === batch.id || !chosen(batch).length" @click="approve(batch)">
+                                <Check class="size-4" />
+                                {{
+                                    chosen(batch).length === batch.items.length
+                                        ? 'Setujui semua'
+                                        : `Setujui ${chosen(batch).length} dari ${batch.items.length}`
+                                }}
+                            </Button>
                         </template>
                         <Button
                             v-if="!canApprove && batch.status === 'pending'"

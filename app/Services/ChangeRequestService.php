@@ -211,13 +211,30 @@ class ChangeRequestService
     // ---- Approvers
 
     /**
-     * Applies every change of the batch as the approver, all or nothing.
+     * Applies the chosen changes of the batch (all when none are given) as the approver, all or nothing.
+     * The changes not chosen are rejected. A chosen change may not build on one that is not chosen.
      *
+     * @param  list<int>|null  $itemIds
      * @return string|null why it could not be applied, or null when it was
      */
-    public function approveBatch(ChangeBatch $batch, User $approver, ?string $note = null): ?string
+    public function approveBatch(ChangeBatch $batch, User $approver, ?string $note = null, ?array $itemIds = null): ?string
     {
-        $items = $batch->items()->get();
+        $all = $batch->items()->get();
+        $items = $itemIds === null ? $all : $all->whereIn('id', $itemIds)->values();
+        $skipped = $all->diff($items);
+        if ($items->isEmpty()) {
+            return 'Pilih minimal satu perubahan untuk disetujui, atau tolak paketnya.';
+        }
+
+        foreach ($items as $item) {
+            $needs = $skipped->first(fn (ChangeRequest $other) => $this->buildsOn($item, $other));
+            if ($needs) {
+                $label = fn (ChangeRequest $r) => '"'.($r->subject_label ?: 'perubahan #'.$r->id).'"';
+
+                return "{$label($item)} memakai {$label($needs)} yang tidak dipilih. Pilih keduanya, atau jangan setujui {$label($item)}.";
+            }
+        }
+
         $lastLog = (int) ActivityLog::max('id');
         $lastPhoto = (int) Photo::max('id');
 
@@ -233,6 +250,9 @@ class ChangeRequestService
             });
 
             ChangeRequest::whereKey($items->modelKeys())->update(['status' => ChangeRequest::APPROVED]);
+            if ($skipped->isNotEmpty()) {
+                ChangeRequest::whereKey($skipped->modelKeys())->update(['status' => ChangeRequest::REJECTED]);
+            }
             $batch->update([
                 'status' => ChangeBatch::APPROVED,
                 'reviewer_id' => $approver->id,
@@ -253,6 +273,14 @@ class ChangeRequestService
         $batch->deleteFiles();
 
         return null;
+    }
+
+    /**
+     * Whether $item uses a record that $other creates, so $item can't be applied without it.
+     */
+    public function buildsOn(ChangeRequest $item, ChangeRequest $other): bool
+    {
+        return ! $item->is($other) && $this->refersTo($item->payload ?? [], $other->token());
     }
 
     public function rejectBatch(ChangeBatch $batch, User $reviewer, ?string $note): void
