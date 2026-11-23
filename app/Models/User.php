@@ -168,6 +168,15 @@ class User extends Authenticatable
     }
 
     /**
+     * The "Ekspor & Impor" menu is for the office only: an export holds customer data and an import
+     * changes many assets at once, so technicians, viewers and sales have no access to it.
+     */
+    public function canTransferData(): bool
+    {
+        return in_array($this->role, [Role::SuperAdmin, Role::Helpdesk, Role::AdminArea], true);
+    }
+
+    /**
      * Whether the user may delete network data.
      */
     public function canDeleteNetwork(): bool

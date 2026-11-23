@@ -72,11 +72,13 @@ const approvalItem = computed<NavItem>(() => {
 const mainNavItems = computed(() => {
     const role = page.props.auth.user.role;
     if (role === 'sales') return [coverageItem, installRequestItem];
-    if (role === 'viewer') return [...staffNavItems.filter((item) => item.href !== '/data'), installRequestItem, helpItem]; // export holds customer data
+    // Export & import is for the office only: the export holds customer data.
+    const fieldNavItems = staffNavItems.filter((item) => item.href !== '/data');
+    if (role === 'viewer') return [...fieldNavItems, installRequestItem, helpItem];
     const items =
         role === 'super_admin' || role === 'helpdesk' || role === 'admin_area'
             ? [...staffNavItems, approvalItem.value, activityItem]
-            : [...staffNavItems, approvalItem.value];
+            : [...fieldNavItems, approvalItem.value];
     return [...items, installRequestItem, helpItem];
 });
 
