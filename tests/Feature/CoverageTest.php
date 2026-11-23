@@ -228,6 +228,9 @@ class CoverageTest extends TestCase
         $this->put('/admin/coverage-radius', ['radius' => 300])->assertForbidden();
         $this->actingAs(User::factory()->create(['role' => Role::AdminArea, 'area_id' => $this->area->id]))
             ->put('/admin/coverage-radius', ['radius' => 300])->assertForbidden();
+        $helpdesk = User::factory()->create(['role' => Role::Helpdesk, 'area_id' => null]);
+        $this->actingAs($helpdesk)->put('/admin/coverage-radius', ['radius' => 300])->assertForbidden();
+        $this->get('/coverage')->assertInertia(fn ($page) => $page->where('canEditRadius', false));
         $this->assertSame(100, $this->check()['radius']);
     }
 

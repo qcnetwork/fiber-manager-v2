@@ -21,7 +21,7 @@ class CoverageController extends Controller
             'radius' => $coverage->radius(),
             'radiusLimits' => [CoverageService::MIN_RADIUS, CoverageService::MAX_RADIUS],
             'routingAvailable' => $coverage->routingAvailable(),
-            'canEditRadius' => $user->isAdministrator(),
+            'canEditRadius' => $user->isSuperAdmin(),
             'areas' => $areas->map->only('id', 'code', 'name', 'center_lat', 'center_lng'),
         ]);
     }
